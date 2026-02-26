@@ -13,6 +13,7 @@ class UserRepository:
         full_name: str,
         hashed_password: str,
         role_id: int,
+        programa_academico: str | None = None,
         is_active: bool = True,
     ):
         user = User(
@@ -20,6 +21,7 @@ class UserRepository:
             full_name=full_name,
             hashed_password=hashed_password,
             role_id=role_id,
+            programa_academico=programa_academico,
             is_active=is_active,
         )
         db.add(user)

@@ -1,48 +1,20 @@
-from app.db.seed import seed_roles
+from app.db.seed import seed_default_users, seed_roles
 from fastapi import FastAPI
-from fastapi import Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from app.db.base import Base
-from app.db.session import SessionLocal, engine
+from app.db.session import SessionLocal
 from app.api.routes import auth_routes
+from app.api.routes.estudiante import appointment_routes as estudiante_appointment_routes
+from app.api.routes.secretaria import appointment_routes as secretaria_appointment_routes
 
 
 app = FastAPI()
 
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    translated_errors = []
-
-    for error in exc.errors():
-        raw_loc = error.get("loc", [])
-        loc = [str(item) for item in raw_loc if item != "body"]
-        field = ".".join(loc) if loc else "request"
-        error_type = error.get("type", "")
-        original_msg = error.get("msg", "Valor inválido")
-
-        if error_type in {"value_error.missing", "missing"}:
-            msg = f"Falta el campo: {field}"
-        elif field.endswith("password") and error_type in {"string_too_short", "too_short", "value_error.any_str.min_length"}:
-            msg = "La contraseña debe tener al menos 8 caracteres"
-        else:
-            msg = original_msg
-
-        translated_errors.append(
-            {
-                "field": field,
-                "message": msg,
-                "type": error_type,
-            }
-        )
-
-    return JSONResponse(status_code=422, content={"detail": translated_errors})
-
-
 app.include_router(auth_routes.router)
+app.include_router(estudiante_appointment_routes.router)
+app.include_router(secretaria_appointment_routes.router)
 @app.on_event("startup")
 def startup_event():
     db = SessionLocal()
     seed_roles(db)
+    seed_default_users(db)
     db.close()

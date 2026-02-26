@@ -14,6 +14,8 @@ class User(Base):
 
     full_name = Column(String(150), nullable=False)
 
+    programa_academico = Column(String(50), nullable=True)
+
     is_active = Column(Boolean, default=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -21,3 +23,4 @@ class User(Base):
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
 
     role = relationship("Role", back_populates="users")
+    appointments = relationship("Appointment", back_populates="student", passive_deletes=True)
