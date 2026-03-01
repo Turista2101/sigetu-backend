@@ -52,4 +52,9 @@ def update_status(
     db: Session = Depends(get_db),
     token_payload: dict = Depends(require_secretaria_or_admin_role),
 ):
-    return service.update_status(db=db, appointment_id=appointment_id, new_status=payload.status)
+    return service.update_status(
+        db=db,
+        appointment_id=appointment_id,
+        new_status=payload.status,
+        changed_by_email=token_payload["sub"],
+    )

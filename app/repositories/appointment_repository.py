@@ -3,6 +3,7 @@ from datetime import date
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.appointment_history_model import AppointmentHistory
 from app.models.appointment_model import Appointment
 from app.models.user_model import User
 
@@ -25,14 +26,13 @@ class AppointmentRepository:
             .all()
         )
 
-    def get_history_by_student_id(self, db: Session, student_id: int) -> list[Appointment]:
+    def get_history_by_student_id(self, db: Session, student_id: int) -> list[AppointmentHistory]:
         return (
-            db.query(Appointment)
+            db.query(AppointmentHistory)
             .filter(
-                Appointment.student_id == student_id,
-                Appointment.status.in_(["atendido", "no_asistio", "finalizada", "cancelada"]),
+                AppointmentHistory.student_id == student_id,
             )
-            .order_by(Appointment.created_at.desc())
+            .order_by(AppointmentHistory.archived_at.desc())
             .all()
         )
 
@@ -63,15 +63,14 @@ class AppointmentRepository:
 
         return query.all()
 
-    def get_queue_history(self, db: Session, sede: str, programa_academico: str | None = None) -> list[Appointment]:
+    def get_queue_history(self, db: Session, sede: str, programa_academico: str | None = None) -> list[AppointmentHistory]:
         query = (
-            db.query(Appointment)
-            .join(User, Appointment.student_id == User.id)
+            db.query(AppointmentHistory)
+            .join(User, AppointmentHistory.student_id == User.id)
             .filter(
-                Appointment.sede == sede,
-                Appointment.status.in_(["atendido", "no_asistio", "finalizada", "cancelada"]),
+                AppointmentHistory.sede == sede,
             )
-            .order_by(Appointment.created_at.desc())
+            .order_by(AppointmentHistory.archived_at.desc())
         )
 
         if programa_academico is not None:
@@ -84,6 +83,32 @@ class AppointmentRepository:
         db.commit()
         db.refresh(appointment)
         return appointment
+
+    def archive_and_delete(
+        self,
+        db: Session,
+        appointment: Appointment,
+        final_status: str,
+        secretaria_id: int | None = None,
+    ) -> AppointmentHistory:
+        history = AppointmentHistory(
+            appointment_id=appointment.id,
+            student_id=appointment.student_id,
+            secretaria_id=secretaria_id,
+            sede=appointment.sede,
+            category=appointment.category,
+            context=appointment.context,
+            status=final_status,
+            turn_number=appointment.turn_number,
+            created_at=appointment.created_at,
+            scheduled_at=appointment.scheduled_at,
+            student=appointment.student,
+        )
+        db.add(history)
+        db.delete(appointment)
+        db.commit()
+        db.refresh(history)
+        return history
 
     def update(self, db: Session, appointment: Appointment, **fields) -> Appointment:
         for field_name, field_value in fields.items():

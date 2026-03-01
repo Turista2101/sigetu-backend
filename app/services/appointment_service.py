@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.models.appointment_history_model import AppointmentHistory
 from app.models.appointment_model import Appointment
 from app.models.user_model import User
 from app.core.realtime import appointment_realtime_manager
@@ -14,6 +15,25 @@ from app.schemas.appointment_schema import AppointmentCreate, AppointmentUpdate
 class AppointmentService:
     def __init__(self):
         self.repository = AppointmentRepository()
+        self.final_statuses = {"atendido", "no_asistio", "cancelada"}
+
+    def _normalize_to_utc_naive(self, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value
+        return value.astimezone().replace(tzinfo=None)
+
+    def _validate_scheduled_at(self, scheduled_at: datetime | None) -> None:
+        if scheduled_at is None:
+            return
+
+        normalized_scheduled_at = self._normalize_to_utc_naive(scheduled_at)
+        now_utc_naive = datetime.utcnow()
+
+        if normalized_scheduled_at < now_utc_naive:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede agendar una cita en una fecha u hora pasada",
+            )
 
     def _publish_realtime_event(self, event_type: str, appointment: Appointment) -> None:
         awaitable = appointment_realtime_manager.publish_appointment_event(event_type, appointment)
@@ -27,6 +47,8 @@ class AppointmentService:
         student = db.query(User).filter(User.email == student_email).first()
         if not student:
             raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+
+        self._validate_scheduled_at(payload.scheduled_at)
 
         sede = "asistencia_estudiantil"
         today = datetime.utcnow().date()
@@ -71,7 +93,7 @@ class AppointmentService:
         db: Session,
         secretaria_email: str,
         sede: str = "asistencia_estudiantil",
-    ) -> list[Appointment]:
+    ) -> list[AppointmentHistory]:
         secretaria = db.query(User).filter(User.email == secretaria_email).first()
         if not secretaria:
             raise HTTPException(status_code=404, detail="Secretaría no encontrada")
@@ -134,7 +156,7 @@ class AppointmentService:
 
         return self.repository.get_by_student_id(db=db, student_id=student.id)
 
-    def get_student_appointment_history(self, db: Session, student_email: str) -> list[Appointment]:
+    def get_student_appointment_history(self, db: Session, student_email: str) -> list[AppointmentHistory]:
         student = db.query(User).filter(User.email == student_email).first()
         if not student:
             raise HTTPException(status_code=404, detail="Estudiante no encontrado")
@@ -172,6 +194,8 @@ class AppointmentService:
         if payload.category is None and payload.context is None and payload.scheduled_at is None:
             raise HTTPException(status_code=400, detail="Debes enviar al menos un campo para actualizar")
 
+        self._validate_scheduled_at(payload.scheduled_at)
+
         updated = self.repository.update(
             db=db,
             appointment=appointment,
@@ -182,7 +206,7 @@ class AppointmentService:
         self._publish_realtime_event("appointment_updated", updated)
         return updated
 
-    def cancel_student_appointment(self, db: Session, appointment_id: int, student_email: str) -> Appointment:
+    def cancel_student_appointment(self, db: Session, appointment_id: int, student_email: str) -> AppointmentHistory:
         student = db.query(User).filter(User.email == student_email).first()
         if not student:
             raise HTTPException(status_code=404, detail="Estudiante no encontrado")
@@ -197,14 +221,30 @@ class AppointmentService:
         if appointment.status != "pendiente":
             raise HTTPException(status_code=400, detail="Solo se pueden cancelar citas en estado pendiente")
 
-        cancelled = self.repository.update_status(db=db, appointment=appointment, status="cancelada")
-        self._publish_realtime_event("appointment_cancelled", cancelled)
-        return cancelled
+        appointment.status = "cancelada"
+        archived = self.repository.archive_and_delete(
+            db=db,
+            appointment=appointment,
+            final_status="cancelada",
+            secretaria_id=None,
+        )
+        self._publish_realtime_event("appointment_cancelled", archived)
+        return archived
 
-    def update_status(self, db: Session, appointment_id: int, new_status: str) -> Appointment:
+    def update_status(
+        self,
+        db: Session,
+        appointment_id: int,
+        new_status: str,
+        changed_by_email: str,
+    ) -> Appointment | AppointmentHistory:
         appointment = self.repository.get_by_id(db, appointment_id)
         if not appointment:
             raise HTTPException(status_code=404, detail="Cita no encontrada")
+
+        changed_by_user = db.query(User).filter(User.email == changed_by_email).first()
+        if not changed_by_user:
+            raise HTTPException(status_code=404, detail="Usuario que actualiza no encontrado")
 
         valid_transitions = {
             "pendiente": {"llamando", "cancelada"},
@@ -212,7 +252,6 @@ class AppointmentService:
             "en_atencion": {"atendido", "cancelada"},
             "atendido": set(),
             "no_asistio": set(),
-            "finalizada": set(),
             "cancelada": set(),
         }
 
@@ -221,6 +260,17 @@ class AppointmentService:
                 status_code=400,
                 detail=f"No se puede cambiar de {appointment.status} a {new_status}",
             )
+
+        if new_status in self.final_statuses:
+            appointment.status = new_status
+            archived = self.repository.archive_and_delete(
+                db=db,
+                appointment=appointment,
+                final_status=new_status,
+                secretaria_id=changed_by_user.id,
+            )
+            self._publish_realtime_event("appointment_status_changed", archived)
+            return archived
 
         updated = self.repository.update_status(db, appointment, new_status)
         self._publish_realtime_event("appointment_status_changed", updated)

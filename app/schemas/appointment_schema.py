@@ -5,7 +5,7 @@ from pydantic import BaseModel, StringConstraints
 
 
 CategoryType = Literal["academico", "administrativo", "financiero", "otro"]
-StatusType = Literal["pendiente", "llamando", "en_atencion", "atendido", "no_asistio", "finalizada", "cancelada"]
+StatusType = Literal["pendiente", "llamando", "en_atencion", "atendido", "no_asistio", "cancelada"]
 
 
 class AppointmentCreate(BaseModel):
