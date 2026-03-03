@@ -1,12 +1,65 @@
 # SIGETU Backend
 
-Backend de gestión de citas construido con FastAPI + SQLAlchemy + Alembic.
+Sistema de gestión de citas académicas construido con **FastAPI**, **SQLAlchemy** y **PostgreSQL**.
 
-## Requisitos
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI 0.131](https://img.shields.io/badge/fastapi-0.131-009688.svg)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/postgresql-12+-336791.svg)](https://www.postgresql.org/)
 
-- Python 3.11+ (recomendado 3.12/3.13)
-- PostgreSQL activo
-- Windows PowerShell (comandos de ejemplo)
+## 📋 Acerca de
+
+SIGETU Backend permite a **estudiantes** crear y gestionar citas académicas, y a **secretaría** administrar la cola de atención en tiempo real.
+
+**Características principales:**
+- 🎓 Gestión de citas por categoría (académica, administrativa, financiera, otra)
+- 👥 Dos roles con permisos diferenciados (estudiante, secretaría)
+- 🔐 Autenticación con JWT y refresh tokens
+- 📡 Actualizaciones en tiempo real vía WebSocket
+- 🗄️ Migraciones versionadas con Alembic
+- 📚 Documentación interactiva en Swagger
+
+## 🚀 Quick Start
+
+```bash
+# 1. Clonar
+git clone <repo_url>
+cd sigetu-backend
+
+# 2. Instalar
+python -m venv venv
+.\venv\Scripts\Activate.ps1        # Windows PowerShell
+pip install -r requirements.txt
+
+# 3. Configurar BD (.env)
+# DATABASE_URL=postgresql://user:pass@localhost:5432/sigetu
+# SECRET_KEY=tu_clave_secreta
+
+# 4. Migraciones
+python -m alembic upgrade head
+
+# 5. Ejecutar
+uvicorn app.main:app --reload
+```
+
+Accede a **http://localhost:8000/docs** para la API interactiva.
+
+Para instalación detallada → [docs/QUICKSTART.md](docs/QUICKSTART.md)
+
+## 📚 Documentación
+
+Toda la documentación está en la carpeta **`docs/`**:
+
+| Documento | Descripción |
+|-----------|------------|
+| [docs/START_HERE.md](docs/START_HERE.md) | 🎯 Lee primero - orientación general |
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | ⚡ Instalación en 5 minutos |
+| [docs/STRUCTURE.md](docs/STRUCTURE.md) | 🏗️ Arquitectura detallada |
+| [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) | 📋 Visión completa del proyecto |
+| [docs/COMMANDS.md](docs/COMMANDS.md) | 💻 Comandos útiles |
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | 🤝 Guía para desarrolladores |
+| [docs/INDEX.md](docs/INDEX.md) | 📑 Índice completo de enlaces |
+
+**👉 Comienza por [docs/START_HERE.md](docs/START_HERE.md)**
 
 ## Paso a paso (recién clonado)
 
@@ -20,22 +73,18 @@ cd sigetu-backend
 ## 2) Crear y activar entorno virtual
 
 ```powershell
-# desde la raíz del proyecto
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m venv venv
+.\venv\Scripts\Activate.ps1        # Windows PowerShell
+pip install -r requirements.txt
 ```
 
 ## 3) Configurar PostgreSQL y variables de entorno
 
-Asegúrate de tener una base de datos creada (por ejemplo `sigetu`).
-
-Crea/edita el archivo `.env` en la raíz:
+Crea el archivo `.env`:
 
 ```env
-DATABASE_URL=postgresql://postgres:12345678@localhost:5432/sigetu
-SECRET_KEY=tu_secret_key_larga
+DATABASE_URL=postgresql://postgres:password@localhost:5432/sigetu
+SECRET_KEY=tu-clave-secreta-segura
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=10080
 REFRESH_TOKEN_EXPIRE_DAYS=7
@@ -43,86 +92,181 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 
 ## 4) Ejecutar migraciones
 
-Usa siempre Alembic con el Python del entorno virtual:
-
 ```powershell
-.\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m alembic current
+python -m alembic upgrade head
+python -m alembic current
 ```
 
 ## 5) Levantar el servidor
 
 ```powershell
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:app --reload
 ```
 
-Documentación interactiva:
+Documentación: **http://localhost:8000/docs**
 
-- Swagger UI: http://127.0.0.1:8000/docs
-- ReDoc: http://127.0.0.1:8000/redoc
+## 6) Usuarios semilla
 
-## 6) Usuarios semilla (se crean en startup)
+Se crean automáticamente:
 
-Contraseña por defecto:
+| Email | Password | Rol |
+|-------|----------|-----|
+| `estudiante@example.com` | `12345678` | estudiante |
+| `secretaria@example.com` | `12345678` | secretaria |
 
-- `12345678`
+---
 
-Ejemplos útiles:
+## 🏗️ Arquitectura
 
-- Estudiante: `estudiante.ingenierias@uniautonoma.edu.co`
-- Secretaría: `secretaria.ingenierias@uniautonoma.edu.co`
-- Secretaría general: `secretaria@uniautonoma.edu.co`
+Arquitectura de capas bien definidas:
 
-## Flujo rápido de prueba
-
-1. Login estudiante en `/auth/login`
-2. Crear cita en `POST /appointments`
-3. Login secretaría en `/auth/login`
-4. Cambiar estado en `PATCH /appointments/{appointment_id}/status`
-
-Para mantener sesión en frontend, usa `/auth/refresh` enviando el `refresh_token` cuando el `access_token` expire.
-
-Para cerrar sesión, usa `/auth/logout` con el `refresh_token`; el token queda revocado y ya no podrá renovarse.
-
-Body para cambio de estado:
-
-```json
-{
-  "status": "llamando"
-}
+```
+HTTP/WebSocket Routes
+    ↓
+Services (Lógica de Negocio)
+    ↓
+Repositories (Acceso a Datos)
+    ↓
+Models/Schemas (ORM + Pydantic)
+    ↓
+PostgreSQL Database
 ```
 
-## Solución de problemas
+Ver detalles en [docs/STRUCTURE.md](docs/STRUCTURE.md)
 
-### `alembic` no se reconoce en terminal
+## 🔐 Roles y permisos
 
-Ejecuta con:
+| Rol | Permisos |
+|-----|----------|
+| **Estudiante** | Crear, ver y editar sus propias citas |
+| **Secretaría** | Ver cola, cambiar estados, ver historial |
 
-```powershell
-.\.venv\Scripts\python.exe -m alembic upgrade head
+Autenticación por JWT. Ver [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md)
+
+## 📡 API Endpoints principales
+
+### Autenticación
+- `POST /auth/register` - Registrar
+- `POST /auth/login` - Login (email/password)
+- `POST /auth/refresh` - Renovar token
+- `POST /auth/logout` - Logout
+
+### Estudiante
+- `POST /appointments` - Crear cita
+- `GET /appointments/me` - Ver mis citas
+- `GET /appointments/me/current` - Ver citas activas
+- `GET /appointments/me/history` - Ver historial
+- `PATCH /appointments/{id}` - Editar mi cita
+
+### Secretaría
+- `GET /appointments/queue` - Ver cola
+- `GET /appointments/queue/history` - Ver historial
+- `PATCH /appointments/{id}/status` - Cambiar estado
+
+### WebSocket
+- `WS /ws/appointments/{token}` - Actualizaciones en tiempo real
+
+Documentación interactiva: **http://localhost:8000/docs**
+
+## 🗄️ Tecnologías
+
+| Componente | Herramienta |
+|-----------|-----------|
+| Framework | FastAPI 0.131 |
+| ORM | SQLAlchemy 2.0.46 |
+| Base de datos | PostgreSQL |
+| Migraciones | Alembic 1.18.4 |
+| Validación | Pydantic 2.12.5 |
+| Autenticación | JWT (python-jose) |
+| Hashing | bcrypt 3.2.2 |
+| Servidor | Uvicorn (ASGI) |
+
+Ver `requirements.txt` para lista completa.
+
+## 📁 Estructura del proyecto
+
+```
+sigetu-backend/
+├── app/
+│   ├── api/routes/           # Endpoints HTTP/WS
+│   ├── services/             # Lógica de negocio
+│   ├── repositories/         # Acceso a datos
+│   ├── models/               # Modelos ORM
+│   ├── schemas/              # Validación Pydantic
+│   ├── core/                 # Config, auth, seguridad
+│   ├── db/                   # Sesiones, seeds
+│   └── main.py               # App principal
+├── alembic/                  # Migraciones
+├── .env                      # Variables de entorno
+├── requirements.txt          # Dependencias
+└── README.md                 # Este archivo
 ```
 
-### Error de migración por estado parcial de base de datos
+Detalles: [docs/STRUCTURE.md](docs/STRUCTURE.md)
 
-Si una migración falló a mitad de camino y la base quedó inconsistente, limpia el esquema y vuelve a migrar:
+## ⚙️ Configuración
 
-```sql
-DROP SCHEMA public CASCADE;
-CREATE SCHEMA public;
+### Variables de entorno (`.env`)
+
+```env
+DATABASE_URL=postgresql://postgres:password@localhost:5432/sigetu
+SECRET_KEY=mi-clave-secreta-super-larga
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=10080
+REFRESH_TOKEN_EXPIRE_DAYS=7
 ```
 
-Luego ejecuta otra vez:
+Ver [env.example](env.example)
 
-```powershell
-.\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m alembic current
+## 🚀 Desarrollo
+
+### Iniciar servidor
+
+```bash
+uvicorn app.main:app --reload
 ```
 
-### Error de bcrypt/passlib al iniciar
+### Migraciones
 
-Este proyecto fija `bcrypt==3.2.2` para compatibilidad con `passlib==1.7.4`.
-Si ya tenías otra versión instalada, reinstala:
-
-```powershell
-python -m pip install -r requirements.txt
+```bash
+python -m alembic upgrade head
+python -m alembic history --verbose
 ```
+
+[Más comandos →](docs/COMMANDS.md)
+
+## 📖 Documentación completa
+
+- **Para la primera guía**: [docs/START_HERE.md](docs/START_HERE.md)
+- **Para instalar**: [docs/QUICKSTART.md](docs/QUICKSTART.md)
+- **Para la arquitectura**: [docs/STRUCTURE.md](docs/STRUCTURE.md)
+- **Para desarrollar**: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+- **Para comandos**: [docs/COMMANDS.md](docs/COMMANDS.md)
+- **Para todo**: [docs/INDEX.md](docs/INDEX.md)
+
+## 🆘 Solución de problemas
+
+| Problema | Solución |
+|----------|----------|
+| "Database connection failed" | Verifica DATABASE_URL en `.env` |
+| "Migration failed" | Revertir: `alembic downgrade -1` |
+| "Port already in use" | Usa otro puerto: `--port 8001` |
+
+[Troubleshooting completo →](docs/QUICKSTART.md#-troubleshooting)
+
+## 🔀 Workflow
+
+1. `git checkout -b feature/descripción`
+2. Implementar cambios
+3. Crear migración si cambió modelo
+4. Probar en http://localhost:8000/docs
+5. Commit y push
+
+Detalles: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+
+---
+
+**¿Eres nuevo?** → [docs/START_HERE.md](docs/START_HERE.md)  
+**¿Necesitas instalar?** → [docs/QUICKSTART.md](docs/QUICKSTART.md)  
+**¿Vas a desarrollar?** → [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)  
+**¿Necesitas buscar algo?** → [docs/INDEX.md](docs/INDEX.md)
