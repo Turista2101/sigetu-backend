@@ -8,7 +8,16 @@ Backend de gestión de citas construido con FastAPI + SQLAlchemy + Alembic.
 - PostgreSQL activo
 - Windows PowerShell (comandos de ejemplo)
 
-## 1) Clonar e instalar dependencias
+## Paso a paso (recién clonado)
+
+## 1) Clonar el repositorio
+
+```powershell
+git clone <URL_DEL_REPO>
+cd sigetu-backend
+```
+
+## 2) Crear y activar entorno virtual
 
 ```powershell
 # desde la raíz del proyecto
@@ -18,7 +27,9 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-## 2) Configurar variables de entorno
+## 3) Configurar PostgreSQL y variables de entorno
+
+Asegúrate de tener una base de datos creada (por ejemplo `sigetu`).
 
 Crea/edita el archivo `.env` en la raíz:
 
@@ -30,7 +41,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=10080
 REFRESH_TOKEN_EXPIRE_DAYS=7
 ```
 
-## 3) Ejecutar migraciones
+## 4) Ejecutar migraciones
 
 Usa siempre Alembic con el Python del entorno virtual:
 
@@ -39,7 +50,7 @@ Usa siempre Alembic con el Python del entorno virtual:
 .\.venv\Scripts\python.exe -m alembic current
 ```
 
-## 4) Levantar el servidor
+## 5) Levantar el servidor
 
 ```powershell
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -50,7 +61,7 @@ Documentación interactiva:
 - Swagger UI: http://127.0.0.1:8000/docs
 - ReDoc: http://127.0.0.1:8000/redoc
 
-## 5) Usuarios semilla (se crean en startup)
+## 6) Usuarios semilla (se crean en startup)
 
 Contraseña por defecto:
 
@@ -89,6 +100,22 @@ Ejecuta con:
 
 ```powershell
 .\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+### Error de migración por estado parcial de base de datos
+
+Si una migración falló a mitad de camino y la base quedó inconsistente, limpia el esquema y vuelve a migrar:
+
+```sql
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+```
+
+Luego ejecuta otra vez:
+
+```powershell
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m alembic current
 ```
 
 ### Error de bcrypt/passlib al iniciar
