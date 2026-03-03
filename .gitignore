@@ -3,13 +3,13 @@ venv/
 .env/
 
 # Variables de entorno
-# .env
+.env
 
 # Archivos Python
 __pycache__/
 *.pyc
 
-# Alembic
+Alembic
 alembic/versions/
 
 # VS Code
