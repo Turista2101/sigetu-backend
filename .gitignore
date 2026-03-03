@@ -9,7 +9,7 @@ __pycache__/
 *.pyc
 
 # Alembic
-alembic/versions/
+# alembic/versions/
 
 # VS Code
 .vscode/
