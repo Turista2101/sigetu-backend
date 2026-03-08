@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
-from app.models.role_model import Role
-from app.models.user_model import User
-from app.core.security import hash_password
+from app.models.modelo_rol import Role
+from app.models.modelo_usuario import User
+from app.core.seguridad import hashear_contrasena
 
 
 SEED_PASSWORD = "12345678"
@@ -28,7 +28,7 @@ def seed_default_users(db: Session):
 
     def upsert_user(email: str, full_name: str, role_id: int, programa_academico: str | None):
         existing_user = db.query(User).filter(User.email == email).first()
-        hashed = hash_password(SEED_PASSWORD)
+        hashed = hashear_contrasena(SEED_PASSWORD)
 
         if existing_user:
             existing_user.full_name = full_name

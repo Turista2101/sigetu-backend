@@ -1,12 +1,12 @@
 from sqlalchemy.orm import Session
-from app.models.user_model import User
+from app.models.modelo_usuario import User
 
-class UserRepository:
+class RepositorioUsuario:
 
-    def get_by_email(self, db: Session, email: str):
+    def obtener_por_email(self, db: Session, email: str):
         return db.query(User).filter(User.email == email).first()
 
-    def create(
+    def crear(
         self,
         db: Session,
         email: str,
@@ -16,7 +16,7 @@ class UserRepository:
         programa_academico: str | None = None,
         is_active: bool = True,
     ):
-        user = User(
+        usuario = User(
             email=email,
             full_name=full_name,
             hashed_password=hashed_password,
@@ -24,7 +24,7 @@ class UserRepository:
             programa_academico=programa_academico,
             is_active=is_active,
         )
-        db.add(user)
+        db.add(usuario)
         db.commit()
-        db.refresh(user)
-        return user
+        db.refresh(usuario)
+        return usuario

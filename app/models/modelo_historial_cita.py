@@ -6,34 +6,39 @@ from sqlalchemy.orm import relationship
 from app.db.base import Base
 
 
-class Appointment(Base):
-    __tablename__ = "appointments"
+class AppointmentHistory(Base):
+    __tablename__ = "appointment_history"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pendiente','llamando','en_atencion','atendido','no_asistio','cancelada')",
-            name="ck_appointments_status_valid",
+            "status IN ('atendido','no_asistio','cancelada')",
+            name="ck_appointment_history_status_valid",
         ),
         CheckConstraint(
             "category IN ('academico','administrativo','financiero','otro')",
-            name="ck_appointments_category_valid",
+            name="ck_appointment_history_category_valid",
         ),
-        Index("ix_appointments_sede_status_created_at", "sede", "status", "created_at"),
+        Index("ix_appointment_history_student_id_archived_at", "student_id", "archived_at"),
+        Index("ix_appointment_history_sede_status_archived_at", "sede", "status", "archived_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    appointment_id = Column(Integer, nullable=False, unique=True, index=True)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     secretaria_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
-    sede = Column(String(80), nullable=False, default="asistencia_estudiantil")
+    sede = Column(String(80), nullable=False)
     category = Column(String(30), nullable=False, index=True)
     context = Column(String(120), nullable=False)
-    status = Column(String(30), nullable=False, default="pendiente", index=True)
-    turn_number = Column(String(20), nullable=False, unique=True, index=True)
+    status = Column(String(30), nullable=False, index=True)
+    turn_number = Column(String(20), nullable=False, index=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False)
     scheduled_at = Column(DateTime, nullable=True)
+    attention_started_at = Column(DateTime, nullable=True)
+    attention_ended_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
-    student = relationship("User", back_populates="appointments", foreign_keys=[student_id])
+    student = relationship("User", foreign_keys=[student_id])
     secretaria = relationship("User", foreign_keys=[secretaria_id])
 
     @property

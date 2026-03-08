@@ -1,11 +1,11 @@
-from app.db.seed import seed_default_users, seed_roles
+from app.db.datos_iniciales import seed_default_users, seed_roles
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.db.session import SessionLocal
-from app.api.routes import appointments_ws_routes
-from app.api.routes import auth_routes
-from app.api.routes.estudiante import appointment_routes as estudiante_appointment_routes
-from app.api.routes.secretaria import appointment_routes as secretaria_appointment_routes
+from app.db.sesion import SessionLocal
+from app.api.routes import rutas_ws_citas
+from app.api.routes import rutas_autenticacion
+from app.api.routes.estudiante import rutas_citas as rutas_citas_estudiante
+from app.api.routes.secretaria import rutas_citas as rutas_citas_secretaria
 
 
 app = FastAPI()
@@ -23,12 +23,12 @@ app.add_middleware(
 )
 
 
-app.include_router(auth_routes.router)
-app.include_router(estudiante_appointment_routes.router)
-app.include_router(secretaria_appointment_routes.router)
-app.include_router(appointments_ws_routes.router)
+app.include_router(rutas_autenticacion.router)
+app.include_router(rutas_citas_estudiante.router)
+app.include_router(rutas_citas_secretaria.router)
+app.include_router(rutas_ws_citas.router)
 @app.on_event("startup")
-def startup_event():
+def evento_inicio():
     db = SessionLocal()
     seed_roles(db)
     seed_default_users(db)
