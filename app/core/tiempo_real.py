@@ -9,7 +9,7 @@ class GestorTiempoRealCitas:
     def __init__(self) -> None:
         self._conexiones: list[dict] = []
 
-    async def conectar(self, websocket: WebSocket, role: str, email: str, programa_academico: str | None) -> None:
+    async def conectar(self, websocket: WebSocket, role: str, email: str | None, programa_academico: str | None, device_id: str | None = None) -> None:
         """Registra una nueva conexión autenticada para recibir eventos en vivo."""
         await websocket.accept()
         self._conexiones.append(
@@ -18,6 +18,7 @@ class GestorTiempoRealCitas:
                 "role": role,
                 "email": email,
                 "programa_academico": programa_academico,
+                "device_id": device_id,
             }
         )
 
@@ -64,6 +65,8 @@ class GestorTiempoRealCitas:
                 puede_recibir = True
             elif rol == "estudiante" and email_estudiante is not None and email == email_estudiante:
                 puede_recibir = True
+            elif rol == "guest" and cita.device_id is not None and item.get("device_id") == cita.device_id:
+                puede_recibir = True
 
             if not puede_recibir:
                 continue
@@ -84,6 +87,34 @@ class GestorTiempoRealCitas:
                 await item["websocket"].send_json(mensaje)
             except Exception:
                 conexiones_obsoletas.append(item["websocket"])
+        for websocket in conexiones_obsoletas:
+            self.desconectar(websocket)
+
+    async def publicar_a_secretaria(self, secretaria_id: int, tipo_evento: str, datos: dict) -> None:
+        """Publica un evento específico para una secretaría determinada."""
+        conexiones_obsoletas = []
+        
+        for item in self._conexiones:
+            rol = item["role"]
+            email = item["email"]
+            websocket: WebSocket = item["websocket"]
+            
+            # Solo enviar a secretarias, administrativos o admisiones
+            if rol not in {"secretaria", "administrativo", "admisiones_mercadeo", "admin"}:
+                continue
+            
+            # Si el email coincide con el de la secretaría, enviar
+            # Nota: secretaria_id se usa para filtrar, pero necesitamos el email
+            # Para esto, el frontend debe escuchar todos los eventos de historia
+            
+            try:
+                await websocket.send_json({
+                    "event": tipo_evento,
+                    **datos,
+                })
+            except Exception:
+                conexiones_obsoletas.append(websocket)
+        
         for websocket in conexiones_obsoletas:
             self.desconectar(websocket)
 

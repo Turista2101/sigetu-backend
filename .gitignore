@@ -1,16 +1,43 @@
 # Entorno virtual
 venv/
-.env
+env/
+.venv/
 
-# Variables de entorno
+# Variables de entorno (NUNCA subir al repo)
 .env
+.env.local
+.env.production
 
-# Archivos Python
+# Credenciales Firebase (NUNCA subir al repo)
+*.json
+!package.json
+
+# Archivos Python compilados
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.pyo
 
-# Alembic
+# Alembic (las versiones SÍ deben subirse)
 # alembic/versions/
 
 # VS Code
 .vscode/
+
+# Editores
+*.swp
+*.swo
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# pytest
+.pytest_cache/
+htmlcov/
+.coverage

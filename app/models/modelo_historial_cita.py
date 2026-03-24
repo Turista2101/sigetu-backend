@@ -32,8 +32,9 @@ class AppointmentHistory(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     appointment_id = Column(Integer, nullable=False, unique=True, index=True)
-    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     secretaria_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    device_id = Column(String(36), nullable=True, index=True)
 
     sede = Column(String(80), nullable=False)
     category = Column(String(30), nullable=False, index=True)
@@ -56,6 +57,13 @@ class AppointmentHistory(Base):
         if self.student is None:
             return None
         return self.student.full_name
+
+    @property
+    def student_programa_academico(self) -> str | None:
+        """Devuelve el programa académico del estudiante."""
+        if self.student is None:
+            return None
+        return self.student.programa_academico
 
     @property
     def secretaria_name(self) -> str | None:

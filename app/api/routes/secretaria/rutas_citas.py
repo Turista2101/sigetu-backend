@@ -1,6 +1,9 @@
 """Endpoints de gestión de cola para roles staff por sede."""
 
-from fastapi import APIRouter, Depends
+from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.dependencias_autenticacion import (
@@ -14,6 +17,7 @@ from app.schemas.esquema_citas import (
     RespuestaCita,
     ActualizarEstadoCita,
     RespuestaExtenderTiempo,
+    ItemHistorialCita,
 )
 from app.services.servicio_citas import ServicioCitas
 
@@ -44,6 +48,24 @@ def obtener_historial_cola(
         db=db,
         staff_email=carga_token["sub"],
         staff_role=carga_token["role"],
+    )
+
+
+@router.get("/my-history", response_model=list[ItemHistorialCita])
+def obtener_mi_historial(
+    sede: Optional[str] = Query(None, description="Filtrar por sede"),
+    fecha_inicio: Optional[datetime] = Query(None, description="Fecha de inicio (ISO 8601)"),
+    fecha_fin: Optional[datetime] = Query(None, description="Fecha fin (ISO 8601)"),
+    db: Session = Depends(obtener_db),
+    carga_token: dict = Depends(requerir_rol_secretaria_o_administrativo),
+):
+    """Obtiene historial de citas atendidas por el usuario staff autenticado."""
+    return servicio.obtener_historial_secretaria(
+        db=db,
+        secretaria_email=carga_token["sub"],
+        sede=sede,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
     )
 
 

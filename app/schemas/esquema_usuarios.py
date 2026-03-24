@@ -1,8 +1,8 @@
 """Esquemas Pydantic para autenticación y representación de usuarios."""
 
-from typing import Annotated, Literal
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, StringConstraints
+from typing import Annotated, Literal, Optional
 
 class CrearUsuario(BaseModel):
     """Payload para registrar estudiantes en el sistema."""
@@ -39,14 +39,19 @@ class RespuestaAuth(BaseModel):
 
 
 class SolicitudRenovarToken(BaseModel):
-    """Payload para solicitar rotación de refresh token."""
+    """Payload para solicitar rotación de refresh token (Android)."""
     refresh_token: str
+
+
+class SolicitudRefreshBody(BaseModel):
+    """Payload opcional para refresh token desde body (Android)."""
+    refresh_token: str | None = None
 
 
 class RespuestaRenovarToken(BaseModel):
     """Respuesta de renovación de sesión con nuevo par de tokens."""
     access_token: str
-    refresh_token: str
+    refresh_token:  Optional[str] = None
     token_type: str = "bearer"
 
 

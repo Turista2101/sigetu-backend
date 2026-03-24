@@ -1,8 +1,8 @@
 """Repositorio de persistencia para citas activas e historial."""
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.modelo_historial_cita import AppointmentHistory
@@ -44,6 +44,17 @@ class RepositorioCitas:
             .all()
         )
 
+    def obtener_historial_por_device_id(self, db: Session, device_id: str) -> list[AppointmentHistory]:
+        """Lista citas archivadas de un invitado por device_id en orden descendente."""
+        return (
+            db.query(AppointmentHistory)
+            .filter(
+                AppointmentHistory.device_id == device_id,
+            )
+            .order_by(AppointmentHistory.archived_at.desc())
+            .all()
+        )
+
     def obtener_actuales_por_id_estudiante(self, db: Session, student_id: int) -> list[Appointment]:
         """Retorna citas en curso del estudiante para la vista de estado actual."""
         return (
@@ -57,18 +68,20 @@ class RepositorioCitas:
         )
 
     def obtener_cola(self, db: Session, sede: str, programa_academico: str | None = None) -> list[Appointment]:
-        """Consulta la cola activa por sede con filtro opcional por programa académico."""
+        """Consulta la cola activa por sede, incluyendo estudiantes e invitados."""
         consulta = (
             db.query(Appointment)
-            .join(User, Appointment.student_id == User.id)
             .filter(
                 Appointment.sede == sede,
                 Appointment.status.in_(["pendiente", "llamando", "en_atencion"]),
+                or_(Appointment.student_id != None, Appointment.device_id != None),
             )
             .order_by(Appointment.created_at.asc())
         )
 
         if programa_academico is not None:
+            # Solo filtra por programa_academico si es estudiante
+            consulta = consulta.join(User, Appointment.student_id == User.id)
             consulta = consulta.filter(User.programa_academico == programa_academico)
 
         return consulta.all()
@@ -77,7 +90,7 @@ class RepositorioCitas:
         """Consulta historial por sede y, cuando aplica, por usuario staff responsable."""
         consulta = (
             db.query(AppointmentHistory)
-            .join(User, AppointmentHistory.student_id == User.id)
+            .outerjoin(User, AppointmentHistory.student_id == User.id)
             .filter(
                 AppointmentHistory.sede == sede,
             )
@@ -86,6 +99,33 @@ class RepositorioCitas:
 
         if secretaria_id is not None:
             consulta = consulta.filter(AppointmentHistory.secretaria_id == secretaria_id)
+
+        return consulta.all()
+
+    def obtener_historial_por_secretaria(
+        self,
+        db: Session,
+        secretaria_id: int,
+        sede: str | None = None,
+        fecha_inicio: datetime | None = None,
+        fecha_fin: datetime | None = None,
+    ) -> list[AppointmentHistory]:
+        """Consulta historial de citas atendidas por una secretaría específica."""
+        consulta = (
+            db.query(AppointmentHistory)
+            .outerjoin(User, AppointmentHistory.student_id == User.id)
+            .filter(AppointmentHistory.secretaria_id == secretaria_id)
+            .order_by(AppointmentHistory.archived_at.desc())
+        )
+
+        if sede is not None:
+            consulta = consulta.filter(AppointmentHistory.sede == sede)
+
+        if fecha_inicio is not None:
+            consulta = consulta.filter(AppointmentHistory.archived_at >= fecha_inicio)
+
+        if fecha_fin is not None:
+            consulta = consulta.filter(AppointmentHistory.archived_at <= fecha_fin)
 
         return consulta.all()
 
@@ -110,6 +150,7 @@ class RepositorioCitas:
             appointment_id=cita.id,
             student_id=cita.student_id,
             secretaria_id=secretaria_id,
+            device_id=cita.device_id,
             sede=cita.sede,
             category=cita.category,
             context=cita.context,
@@ -137,12 +178,18 @@ class RepositorioCitas:
         return cita
 
     def siguiente_secuencia_turno(self, db: Session, sede: str, para_fecha: date) -> int:
-        """Calcula el siguiente consecutivo diario de turnos considerando activos e historial."""
+        """Calcula el siguiente consecutivo diario de turnos considerando activos e historial.
+        
+        Busca por prefijo del turn_number en lugar de por fecha de created_at,
+        porque created_at se guarda en UTC y para_fecha está en hora Colombia.
+        """
+        prefijo = para_fecha.strftime("%Y%m%d")
+
         turnos_activos = (
             db.query(Appointment.turn_number)
             .filter(
                 Appointment.sede == sede,
-                func.date(Appointment.created_at) == para_fecha,
+                Appointment.turn_number.like(f"%-{prefijo}-%"),
             )
             .all()
         )
@@ -151,7 +198,7 @@ class RepositorioCitas:
             db.query(AppointmentHistory.turn_number)
             .filter(
                 AppointmentHistory.sede == sede,
-                func.date(AppointmentHistory.created_at) == para_fecha,
+                AppointmentHistory.turn_number.like(f"%-{prefijo}-%"),
             )
             .all()
         )
@@ -161,16 +208,13 @@ class RepositorioCitas:
             numero_turno = tupla_turno[0]
             if not numero_turno:
                 continue
-
             partes = numero_turno.split("-")
             if len(partes) != 3:
                 continue
-
             try:
                 secuencia = int(partes[2])
             except ValueError:
                 continue
-
             if secuencia > max_secuencia:
                 max_secuencia = secuencia
 

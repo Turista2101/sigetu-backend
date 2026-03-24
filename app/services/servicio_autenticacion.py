@@ -91,13 +91,9 @@ class ServicioAutenticacion:
         )
 
         if device_id:
-            estados_activos = {"pendiente", "llamando", "en_atencion"}
             citas_invitado = (
                 db.query(Appointment)
-                .filter(
-                    Appointment.device_id == device_id,
-                    Appointment.status.in_(estados_activos),
-                )
+                .filter(Appointment.device_id == device_id)
                 .all()
             )
             for cita in citas_invitado:

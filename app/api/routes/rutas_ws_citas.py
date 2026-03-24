@@ -24,9 +24,29 @@ async def websocket_citas(
         carga = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = carga.get("sub")
         rol = carga.get("role")
+        device_id = carga.get("device_id")
 
-        if not email or not rol:
+        if not rol:
             await websocket.close(code=1008)
+            return
+
+        if rol != "guest" and not email:
+            await websocket.close(code=1008)
+            return
+
+        if rol == "guest":
+            if not device_id:
+                await websocket.close(code=1008)
+                return
+            await gestor_tiempo_real_citas.conectar(
+                websocket=websocket,
+                role=rol,
+                email=None,
+                programa_academico=None,
+                device_id=device_id,
+            )
+            while True:
+                await websocket.receive_text()
             return
 
         usuario = db.query(User).filter(User.email == email).first()

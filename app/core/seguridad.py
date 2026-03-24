@@ -4,6 +4,7 @@ from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
 from uuid import uuid4
+from fastapi import Response
 from app.core.configuracion import (
     SECRET_KEY,
     ALGORITHM,
@@ -51,3 +52,33 @@ def crear_token_invitado(device_id: str) -> str:
         "exp": datetime.utcnow() + timedelta(hours=4),
     }
     return jwt.encode(carga, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def configurar_cookie_refresh_token(
+    response: Response,
+    refresh_token: str,
+    es_desarrollo: bool = False,
+):
+    """Configura cookie HttpOnly para refresh token con seguridad web."""
+    max_age = int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds())
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,              # No accesible desde JavaScript
+        secure=not es_desarrollo,   # Solo HTTPS en producción
+        samesite="none" if not es_desarrollo else "lax",  # "none" en prod, "lax" en desarrollo
+        max_age=max_age,
+        path="/",                   # Disponible para toda la aplicación
+    )
+
+
+def eliminar_cookie_refresh_token(response: Response, es_desarrollo: bool = False):
+    """Elimina la cookie de refresh token para cerrar sesión."""
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
+        httponly=True,
+        secure=not es_desarrollo,
+        samesite="none" if not es_desarrollo else "lax",
+    )

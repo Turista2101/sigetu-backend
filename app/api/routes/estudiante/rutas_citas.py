@@ -1,8 +1,6 @@
 """Endpoints de citas para estudiantes e invitados."""
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-
 from app.core.dependencias_autenticacion import requerir_rol_estudiante, requerir_rol_invitado, requerir_rol_estudiante_o_invitado
 from app.db.sesion import obtener_db
 from app.schemas.esquema_citas import CrearCita, RespuestaCita, ActualizarCita, RespuestaHorariosOcupados
@@ -42,6 +40,19 @@ def obtener_citas_invitado(
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="No puedes consultar citas de otro dispositivo")
     return servicio.obtener_citas_invitado(db=db, device_id=device_id)
+
+
+@router.get("/guest/history", response_model=list[RespuestaCita])
+def obtener_historial_invitado(
+    device_id: str = Query(..., description="UUID v4 del dispositivo invitado"),
+    carga_token: dict = Depends(requerir_rol_invitado),
+    db: Session = Depends(obtener_db),
+):
+    """Retorna historial de citas finalizadas/canceladas del invitado."""
+    if carga_token.get("device_id") != device_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="No puedes consultar el historial de otro dispositivo")
+    return servicio.obtener_historial_invitado(db=db, device_id=device_id)
 
 
 @router.post("", response_model=RespuestaCita)
@@ -122,4 +133,34 @@ def cancelar_mi_cita(
         db=db,
         appointment_id=appointment_id,
         student_email=carga_token["sub"],
+    )
+
+
+@router.patch("/guest/{appointment_id}", response_model=RespuestaCita)
+def actualizar_cita_invitado(
+    appointment_id: int,
+    carga: ActualizarCita,
+    db: Session = Depends(obtener_db),
+    carga_token: dict = Depends(requerir_rol_invitado),
+):
+    """Permite actualizar datos de una cita pendiente del invitado autenticado."""
+    return servicio.actualizar_cita_invitado(
+        db=db,
+        appointment_id=appointment_id,
+        payload=carga,
+        device_id=carga_token["device_id"],
+    )
+
+
+@router.patch("/guest/{appointment_id}/cancel", response_model=RespuestaCita)
+def cancelar_cita_invitado(
+    appointment_id: int,
+    db: Session = Depends(obtener_db),
+    carga_token: dict = Depends(requerir_rol_invitado),
+):
+    """Cancela una cita pendiente del invitado autenticado."""
+    return servicio.cancelar_cita_invitado(
+        db=db,
+        appointment_id=appointment_id,
+        device_id=carga_token["device_id"],
     )

@@ -13,11 +13,15 @@ from app.models.modelo_usuario import User
 from app.core.tiempo_real import gestor_tiempo_real_citas
 from app.repositories.repositorio_citas import RepositorioCitas
 from app.schemas.esquema_citas import CrearCita, ActualizarCita, RespuestaHorariosOcupados, RespuestaExtenderTiempo
+from app.services.servicio_notificaciones import ServicioNotificaciones
 
 
 SEDE_ASISTENCIA = "asistencia_estudiantil"
 SEDE_ADMINISTRATIVA = "sede_administrativa"
 SEDE_ADMISIONES_MERCADEO = "sede_admisiones_mercadeo"
+
+# CAMBIO: Zona horaria de Colombia (UTC-5) como constante global
+COLOMBIA_TZ = timezone(timedelta(hours=-5))
 
 CATEGORIAS_CONTEXTO_ADMINISTRATIVA: dict[str, set[str]] = {
     "pagos_facturacion": {
@@ -59,15 +63,58 @@ CATEGORIAS_CONTEXTO_ADMISIONES_MERCADEO: dict[str, set[str]] = {
 class ServicioCitas:
     """Centraliza reglas de negocio de citas para estudiantes y personal de atención."""
 
+    def actualizar_cita_invitado(
+            self,
+            db: Session,
+            appointment_id: int,
+            payload: ActualizarCita,
+            device_id: str,
+        ) -> Appointment:
+            """Permite editar cita pendiente de invitado validando reglas de sede."""
+            cita = self.repositorio.obtener_por_id(db=db, appointment_id=appointment_id)
+            if not cita:
+                raise HTTPException(status_code=404, detail="Cita no encontrada")
+            if cita.device_id != device_id:
+                raise HTTPException(status_code=403, detail="No puedes modificar una cita de otro dispositivo")
+            if cita.status != "pendiente":
+                raise HTTPException(status_code=400, detail="Solo se pueden editar citas en estado pendiente")
+            if payload.category is None and payload.context is None and payload.scheduled_at is None:
+                raise HTTPException(status_code=400, detail="Debes enviar al menos un campo para actualizar")
+            categoria_objetivo = payload.category or cita.category
+            contexto_objetivo = payload.context or cita.context
+            self._validar_categoria_contexto_por_sede(cita.sede, categoria_objetivo, contexto_objetivo)
+            self._validar_fecha_agendada(db, payload.scheduled_at, sede=cita.sede, excluir_cita_id=appointment_id)
+            actualizada = self.repositorio.actualizar(
+                db=db,
+                cita=cita,
+                category=payload.category,
+                context=payload.context,
+                scheduled_at=payload.scheduled_at,
+            )
+            self._publicar_evento_realtime("appointment_updated", actualizada)
+            # Notificación push a invitado
+            self.servicio_notificaciones.notificar_estado_cita_invitado(
+                db=db,
+                device_id=device_id,
+                nuevo_estado=actualizada.status,
+                turno=actualizada.turn_number,
+            )
+            return actualizada
+    """Centraliza reglas de negocio de citas para estudiantes y personal de atención."""
+
     def __init__(self):
         self.repositorio = RepositorioCitas()
+        self.servicio_notificaciones = ServicioNotificaciones()
         self.estados_finales = {"atendido", "no_asistio", "cancelada"}
 
-    def _normalizar_a_utc_naive(self, valor: datetime) -> datetime:
-        """Convierte datetimes con zona horaria a UTC naive para persistencia consistente."""
+    def _normalizar_a_colombia_naive(self, valor: datetime) -> datetime:
+        """Convierte cualquier datetime a hora Colombia naive para persistencia consistente.
+        - Sin tzinfo: asume que ya es hora Colombia, lo devuelve tal cual.
+        - Con tzinfo: convierte a COLOMBIA_TZ y elimina tzinfo.
+        """
         if valor.tzinfo is None:
             return valor
-        return valor.astimezone(timezone.utc).replace(tzinfo=None)
+        return valor.astimezone(COLOMBIA_TZ).replace(tzinfo=None)
 
     def _validar_fecha_agendada(
         self,
@@ -80,10 +127,11 @@ class ServicioCitas:
         if scheduled_at is None:
             return
 
-        fecha_normalizada = self._normalizar_a_utc_naive(scheduled_at)
-        ahora_utc = datetime.utcnow()
+        # CORRECCIÓN 2: Usar método y variable de Colombia en lugar de UTC
+        fecha_normalizada = self._normalizar_a_colombia_naive(scheduled_at)
+        ahora_colombia = datetime.now(COLOMBIA_TZ).replace(tzinfo=None)
 
-        if fecha_normalizada < ahora_utc:
+        if fecha_normalizada < ahora_colombia:
             raise HTTPException(
                 status_code=400,
                 detail="No se puede agendar una cita en una fecha u hora pasada",
@@ -202,14 +250,20 @@ class ServicioCitas:
             )
 
     def obtener_horarios_ocupados(self, db: Session, sede: str = SEDE_ASISTENCIA) -> RespuestaHorariosOcupados:
-        """Lista horarios ocupados y su estado activo para una sede específica."""
+        """Lista horarios ocupados y su estado activo para una sede específica.
+
+        CORRECCIÓN 3: Filtra citas cuyo scheduled_at ya pasó usando hora Colombia.
+        """
         estados_activos = {"pendiente", "llamando", "en_atencion"}
+        # CORRECCIÓN 3: Usar hora Colombia en lugar de UTC
+        ahora_colombia = datetime.now(COLOMBIA_TZ).replace(tzinfo=None)
         filas = (
             db.query(Appointment.scheduled_at, Appointment.status, Appointment.attention_started_at, Appointment.extension_count)
             .filter(
                 Appointment.sede == sede,
                 Appointment.scheduled_at.isnot(None),
                 Appointment.status.in_(estados_activos),
+                Appointment.scheduled_at >= ahora_colombia,  # CORRECCIÓN 3: Solo citas futuras o actuales
             )
             .all()
         )
@@ -238,18 +292,9 @@ class ServicioCitas:
         estudiante = None
         estudiante_id = None
 
+        # Invitado: permitir múltiples citas activas (sin restricción por device_id)
         if device_id:
-            estados_activos = {"pendiente", "llamando", "en_atencion"}
-            activa = (
-                db.query(Appointment)
-                .filter(
-                    Appointment.device_id == device_id,
-                    Appointment.status.in_(estados_activos),
-                )
-                .first()
-            )
-            if activa:
-                raise HTTPException(status_code=409, detail="Ya tienes una cita activa como invitado")
+            pass
         else:
             estudiante = db.query(User).filter(User.email == student_email).first()
             if not estudiante:
@@ -259,7 +304,9 @@ class ServicioCitas:
         self._validar_fecha_agendada(db, payload.scheduled_at, sede=sede)
         self._validar_categoria_contexto_por_sede(sede, payload.category, payload.context)
 
-        hoy = datetime.utcnow().date()
+        # CAMBIO: Usar hora de Colombia para obtener la fecha local correcta
+        hoy = datetime.now(COLOMBIA_TZ).replace(tzinfo=None).date()
+        print(f"[DEBUG] hoy Colombia: {hoy}", flush=True)
 
         ultimo_error: IntegrityError | None = None
         for _ in range(3):
@@ -278,17 +325,22 @@ class ServicioCitas:
                 scheduled_at=payload.scheduled_at,
             )
             try:
-                creada = self.repositorio.crear(db, cita)
-                if estudiante is not None:
-                    creada.student = estudiante
-                    self._publicar_evento_realtime("appointment_created", creada)
+                self.repositorio.crear(db, cita)
+                self._publicar_evento_realtime("appointment_created", cita)
                 self._publicar_evento_realtime_broadcast()
-                return creada
+                # Notificación push a invitado si aplica
+                if device_id:
+                    self.servicio_notificaciones.notificar_estado_cita_invitado(
+                        db=db,
+                        device_id=device_id,
+                        nuevo_estado="pendiente",
+                        turno=numero_turno,
+                    )
+                return cita
             except IntegrityError as exc:
                 db.rollback()
                 ultimo_error = exc
-
-        raise HTTPException(status_code=409, detail="No fue posible asignar turno, intenta nuevamente") from ultimo_error
+        raise HTTPException(status_code=409, detail="No se pudo crear la cita: conflicto de horario")
 
     def obtener_cola(
         self,
@@ -336,6 +388,27 @@ class ServicioCitas:
             secretaria_id=secretaria_id,
         )
 
+    def obtener_historial_secretaria(
+        self,
+        db: Session,
+        secretaria_email: str,
+        sede: str | None = None,
+        fecha_inicio: datetime | None = None,
+        fecha_fin: datetime | None = None,
+    ) -> list[AppointmentHistory]:
+        """Obtiene historial de citas atendidas por una secretaría específica."""
+        secretaria = db.query(User).filter(User.email == secretaria_email).first()
+        if not secretaria:
+            raise HTTPException(status_code=404, detail="Secretaría no encontrada")
+
+        return self.repositorio.obtener_historial_por_secretaria(
+            db=db,
+            secretaria_id=secretaria.id,
+            sede=sede,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+        )
+
     def obtener_detalle_cita(
         self,
         db: Session,
@@ -343,32 +416,29 @@ class ServicioCitas:
         requester_email: str,
         requester_role: str,
     ) -> dict:
-        """Retorna detalle de cita aplicando controles de visibilidad por sede y rol."""
+        """Retorna detalle de cita aplicando controles de visibilidad por sede y rol. Soporta citas de invitados."""
         cita = self.repositorio.obtener_por_id(db=db, appointment_id=appointment_id)
         if not cita:
             raise HTTPException(status_code=404, detail="Cita no encontrada")
 
-        estudiante = cita.student or db.query(User).filter(User.id == cita.student_id).first()
-        if not estudiante:
-            raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+        # Si es cita de invitado, no hay estudiante asociado
+        if cita.student_id is None and cita.device_id:
+            estudiante = None
+        else:
+            estudiante = cita.student or db.query(User).filter(User.id == cita.student_id).first()
+            if not estudiante:
+                raise HTTPException(status_code=404, detail="Estudiante no encontrado")
 
         if requester_role in {"secretaria", "administrativo", "admisiones_mercadeo"}:
             sede_permitida = self._resolver_sede_por_rol(requester_role)
             if cita.sede != sede_permitida:
                 raise HTTPException(status_code=403, detail="No puedes ver citas de otra sede")
 
-            secretaria = db.query(User).filter(User.email == requester_email).first()
-            if not secretaria:
-                raise HTTPException(status_code=404, detail="Usuario no encontrado")
-            if requester_role == "secretaria":
-                if not secretaria.programa_academico:
-                    raise HTTPException(status_code=403, detail="El usuario no tiene programa_academico asignado")
-                if estudiante.programa_academico != secretaria.programa_academico:
-                    raise HTTPException(status_code=403, detail="No puedes ver citas de otro programa")
-
-        return {
+        # Construir respuesta compatible para ambos casos
+        detalle = {
             "id": cita.id,
             "student_id": cita.student_id,
+            "device_id": cita.device_id,
             "turn_number": cita.turn_number,
             "sede": cita.sede,
             "category": cita.category,
@@ -376,13 +446,19 @@ class ServicioCitas:
             "status": cita.status,
             "created_at": cita.created_at,
             "scheduled_at": cita.scheduled_at,
-            "student": {
+            "attention_started_at": cita.attention_started_at,
+            "extension_count": getattr(cita, "extension_count", 0),
+        }
+        if estudiante:
+            detalle["student"] = {
                 "id": estudiante.id,
                 "full_name": estudiante.full_name,
                 "email": estudiante.email,
-                "programa_academico": estudiante.programa_academico,
-            },
-        }
+                "programa_academico": getattr(estudiante, "programa_academico", None),
+            }
+        else:
+            detalle["student"] = None
+        return detalle
 
     def obtener_citas_estudiante(self, db: Session, student_email: str) -> list[Appointment]:
         """Lista todas las citas activas del estudiante autenticado."""
@@ -416,6 +492,10 @@ class ServicioCitas:
             .order_by(Appointment.created_at.desc())
             .all()
         )
+
+    def obtener_historial_invitado(self, db: Session, device_id: str) -> list[AppointmentHistory]:
+        """Consulta historial de citas archivadas del invitado por device_id."""
+        return self.repositorio.obtener_historial_por_device_id(db=db, device_id=device_id)
 
     def actualizar_cita_estudiante(
         self,
@@ -485,6 +565,33 @@ class ServicioCitas:
         self._publicar_evento_realtime_broadcast()
         return archivada
 
+    def cancelar_cita_invitado(self, db: Session, appointment_id: int, device_id: str) -> AppointmentHistory:
+        """Cancela una cita pendiente de invitado y la mueve a historial."""
+        cita = self.repositorio.obtener_por_id(db=db, appointment_id=appointment_id)
+        if not cita:
+            raise HTTPException(status_code=404, detail="Cita no encontrada")
+        if cita.device_id != device_id:
+            raise HTTPException(status_code=403, detail="No puedes cancelar una cita de otro dispositivo")
+        if cita.status != "pendiente":
+            raise HTTPException(status_code=400, detail="Solo se pueden cancelar citas en estado pendiente")
+        cita.status = "cancelada"
+        archivada = self.repositorio.archivar_y_eliminar(
+            db=db,
+            cita=cita,
+            estado_final="cancelada",
+            secretaria_id=None,
+        )
+        self._publicar_evento_realtime("appointment_cancelled", archivada)
+        self._publicar_evento_realtime_broadcast()
+        # Notificación push a invitado
+        self.servicio_notificaciones.notificar_estado_cita_invitado(
+            db=db,
+            device_id=device_id,
+            nuevo_estado="cancelada",
+            turno=archivada.turn_number,
+        )
+        return archivada
+
     def iniciar_atencion(self, db: Session, appointment_id: int, staff_email: str, staff_role: str) -> Appointment:
         """Marca una cita como `en_atencion` por un miembro del staff autorizado."""
         cita = self.repositorio.obtener_por_id(db, appointment_id)
@@ -505,7 +612,8 @@ class ServicioCitas:
         if cita.secretaria_id and cita.secretaria_id != secretaria.id:
             raise HTTPException(status_code=403, detail="Esta cita está siendo atendida por otra secretaría")
 
-        ahora_colombia = datetime.now(timezone(timedelta(hours=-5))).replace(tzinfo=None)
+        # CAMBIO: Usar constante COLOMBIA_TZ en lugar de crear timezone cada vez
+        ahora_colombia = datetime.now(COLOMBIA_TZ).replace(tzinfo=None)
         cita.status = "en_atencion"
         cita.attention_started_at = ahora_colombia
         cita.secretaria_id = secretaria.id
@@ -513,6 +621,32 @@ class ServicioCitas:
         db.refresh(cita)
         self._publicar_evento_realtime("appointment_status_changed", cita)
         self._publicar_evento_realtime_broadcast()
+        
+        # Notificar a estudiante autenticado o invitado
+        if cita.student_id:
+            self.servicio_notificaciones.notificar_estado_cita(
+                db=db,
+                user_id=cita.student_id,
+                nuevo_estado=cita.status,
+                turno=cita.turn_number,
+            )
+        elif cita.device_id:
+            self.servicio_notificaciones.notificar_estado_cita_invitado(
+                db=db,
+                device_id=cita.device_id,
+                nuevo_estado=cita.status,
+                turno=cita.turn_number,
+            )
+        
+        # Notificar al staff que inició la atención
+        self.servicio_notificaciones.notificar_estado_cita_staff(
+            db=db,
+            user_id=secretaria.id,
+            nuevo_estado=cita.status,
+            turno=cita.turn_number,
+            accion="Atención iniciada",
+        )
+        
         return cita
 
     def extender_tiempo(self, db: Session, appointment_id: int, staff_email: str, staff_role: str) -> RespuestaExtenderTiempo:
@@ -566,6 +700,18 @@ class ServicioCitas:
         db.flush()
         db.commit()
         self._publicar_evento_realtime_broadcast()
+
+        # Notificar a cada cita afectada por la extensión
+        for c in citas_siguientes:
+            nuevo_horario = c.scheduled_at.strftime('%H:%M')
+            self.servicio_notificaciones.notificar_extension_tiempo(
+                db=db,
+                turno=c.turn_number,
+                nuevo_horario=nuevo_horario,
+                user_id=c.student_id,
+                device_id=c.device_id,
+            )
+
         return RespuestaExtenderTiempo(
             mensaje="Tiempo extendido 15 minutos",
             citas_actualizadas=len(citas_siguientes) + 1,
@@ -624,14 +770,17 @@ class ServicioCitas:
             attention_ended_at = None
             scheduled_at_original = cita.scheduled_at
             if cita.status == "en_atencion" and new_status == "atendido":
-                ahora_colombia = datetime.now(timezone(timedelta(hours=-5))).replace(tzinfo=None)
+                # CAMBIO: Usar constante COLOMBIA_TZ en lugar de crear timezone cada vez
+                ahora_colombia = datetime.now(COLOMBIA_TZ).replace(tzinfo=None)
                 attention_ended_at = ahora_colombia
                 if cita.attention_started_at is not None and cita.scheduled_at is not None:
                     import math
                     tiempo_usado = (ahora_colombia - cita.attention_started_at).total_seconds()
-                    bloques_usados = math.ceil(max(tiempo_usado, 1) / (15 * 60))
+                    bloques_usados = math.floor(max(tiempo_usado, 1) / (15 * 60))
                     bloques_totales = 1 + (cita.extension_count or 0)
-                    bloques_a_devolver = bloques_totales - bloques_usados
+                    bloques_extendidos = cita.extension_count or 0  # ← solo los extendidos, sin el base
+                    bloques_a_devolver = min(bloques_extendidos - bloques_usados, bloques_extendidos)  # ← nunca devuelve el bloque base
+                    bloques_a_devolver = max(bloques_a_devolver, 0)  # ← nunca negativo
                     fin_real = cita.attention_started_at + timedelta(minutes=15 * bloques_usados)
                     if bloques_a_devolver > 0 and fin_real < cita.scheduled_at:
                         cita.scheduled_at = None
@@ -666,8 +815,53 @@ class ServicioCitas:
             )
             self._publicar_evento_realtime("appointment_status_changed", archivada)
             self._publicar_evento_realtime_broadcast()
+
+            # Notificar a estudiante autenticado o invitado
+            if archivada.student_id:
+                self.servicio_notificaciones.notificar_estado_cita(
+                    db=db,
+                    user_id=archivada.student_id,
+                    nuevo_estado=archivada.status,
+                    turno=archivada.turn_number,
+                )
+            elif archivada.device_id:
+                self.servicio_notificaciones.notificar_estado_cita_invitado(
+                    db=db,
+                    device_id=archivada.device_id,
+                    nuevo_estado=archivada.status,
+                    turno=archivada.turn_number,
+                )
             return archivada
 
         actualizada = self.repositorio.actualizar_estado(db, cita, new_status)
         self._publicar_evento_realtime("appointment_status_changed", actualizada)
+        
+        # Notificar a estudiante autenticado o invitado (dueño de la cita)
+        if actualizada.student_id:
+            self.servicio_notificaciones.notificar_estado_cita(
+                db=db,
+                user_id=actualizada.student_id,
+                nuevo_estado=actualizada.status,
+                turno=actualizada.turn_number,
+            )
+        elif actualizada.device_id:
+            self.servicio_notificaciones.notificar_estado_cita_invitado(
+                db=db,
+                device_id=actualizada.device_id,
+                nuevo_estado=actualizada.status,
+                turno=actualizada.turn_number,
+            )
+        
+        # Notificar al staff que realizó el cambio (para que reciba confirmación en su dispositivo)
+        if changed_by_role in {"secretaria", "administrativo", "admisiones_mercadeo"}:
+            staff = db.query(User).filter(User.email == changed_by_email).first()
+            if staff:
+                self.servicio_notificaciones.notificar_estado_cita_staff(
+                    db=db,
+                    user_id=staff.id,
+                    nuevo_estado=actualizada.status,
+                    turno=actualizada.turn_number,
+                    accion=f"Cita {new_status}",
+                )
+        
         return actualizada

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, StringConstraints, field_validator
 
 
 TipoCategoria = Literal[
@@ -28,12 +28,36 @@ class CrearCita(BaseModel):
     context: Annotated[str, StringConstraints(min_length=2, max_length=120, strip_whitespace=True)]
     scheduled_at: datetime | None = None
 
+    @field_validator("scheduled_at", mode="before")
+    @classmethod
+    def normalizar_scheduled_at(cls, v):
+        if v is None:
+            return v
+        from datetime import timezone, timedelta
+        dt = datetime.fromisoformat(v) if isinstance(v, str) else v
+        if dt.tzinfo is not None:
+            COLOMBIA_TZ = timezone(timedelta(hours=-5))
+            return dt.astimezone(COLOMBIA_TZ).replace(tzinfo=None)
+        return dt
+
 
 class ActualizarCita(BaseModel):
     """Payload parcial para editar una cita pendiente."""
     category: TipoCategoria | None = None
     context: Annotated[str, StringConstraints(min_length=2, max_length=120, strip_whitespace=True)] | None = None
     scheduled_at: datetime | None = None
+
+    @field_validator("scheduled_at", mode="before")
+    @classmethod
+    def normalizar_scheduled_at(cls, v):
+        if v is None:
+            return v
+        from datetime import timezone, timedelta
+        dt = datetime.fromisoformat(v) if isinstance(v, str) else v
+        if dt.tzinfo is not None:
+            COLOMBIA_TZ = timezone(timedelta(hours=-5))
+            return dt.astimezone(COLOMBIA_TZ).replace(tzinfo=None)
+        return dt
 
 
 class ActualizarEstadoCita(BaseModel):
@@ -113,6 +137,31 @@ class ItemColaCita(BaseModel):
     status: TipoEstado
     created_at: datetime
     scheduled_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ItemHistorialCita(BaseModel):
+    """Elemento de historial de cita con información completa."""
+    id: int
+    appointment_id: int
+    student_id: int | None = None
+    student_name: str | None = None
+    student_programa_academico: str | None = None
+    secretaria_id: int | None = None
+    secretaria_name: str | None = None
+    device_id: str | None = None
+    turn_number: str
+    sede: str
+    category: TipoCategoria
+    context: str
+    status: TipoEstado
+    created_at: datetime
+    scheduled_at: datetime | None = None
+    attention_started_at: datetime | None = None
+    attention_ended_at: datetime | None = None
+    archived_at: datetime
 
     class Config:
         from_attributes = True
