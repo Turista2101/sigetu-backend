@@ -4,17 +4,121 @@ Guía para instalar y ejecutar SIGETU Backend en tu máquina de desarrollo.
 
 ## ✅ Requisitos previos
 
-- **Python 3.11+** (recomendado 3.12 o 3.13)
-- **PostgreSQL** corriendo localmente o en red
-- **Git** (para clonar el repo)
-- **PowerShell** (en Windows) o bash (Linux/Mac)
+Elige **una** de las dos opciones:
 
-Verifica que tengas Python:
+### Opción 1: Con Docker (Recomendado - Más simple)
+- **Docker Desktop** instalado
+- **Docker Compose** (incluido en Docker Desktop)
+- **Git**
+
+### Opción 2: Sin Docker (Manual)
+- **Python 3.11+** (recomendado 3.12 o 3.13)
+- **PostgreSQL 12+** corriendo localmente
+- **Git**
+- **PowerShell** (Windows) o bash (Linux/Mac)
+
+---
+
+## 🐳 Instalación con Docker (Recomendado)
+
+### Paso 1: Clonar el repositorio
+
 ```powershell
-python --version
+git clone <URL_DEL_REPOSITORIO>
+cd sigetu-backend
 ```
 
-## 🔧 Instalación paso a paso
+### Paso 2: Configurar variables de entorno
+
+Crea archivo `.env` en la raíz del proyecto:
+
+```env
+# Base de datos (usa 'db' como host cuando uses Docker Compose)
+DATABASE_URL=postgresql://postgres:2101@db:5432/sigetu
+
+# Seguridad
+SECRET_KEY=tu_clave_secreta_super_larga_y_segura_aqui
+ALGORITHM=HS256
+
+# Tokens
+ACCESS_TOKEN_EXPIRE_MINUTES=10080
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Firebase (opcional - para notificaciones push)
+FIREBASE_CREDENTIALS_PATH=./sigetu-b10c0-firebase-adminsdk-fbsvc-d3c8e11eaf.json
+```
+
+**⚠️ Importante:**
+- Genera SECRET_KEY segura: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+- El archivo Firebase es opcional (solo si usas notificaciones)
+- No commitees el `.env` a Git (ya está en `.gitignore`)
+
+### Paso 3: Ejecutar con Docker Compose
+
+```powershell
+# Construir e iniciar servicios (API + PostgreSQL)
+docker-compose up -d
+
+# Ver logs
+docker-compose logs -f api
+
+# O ver todos los servicios
+docker-compose logs -f
+```
+
+Deberías ver:
+```
+sigetu_api | Marcando migraciones como aplicadas...
+sigetu_api | Corriendo migraciones...
+sigetu_api | Iniciando servidor...
+sigetu_api | INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+### Paso 4: Verificar que funciona
+
+- **Documentación API**: http://localhost:8000/docs
+- **Estado de servicios**: `docker-compose ps`
+
+**¡Listo!** Usuarios de prueba creados automáticamente:
+- `estudiante@example.com` / `12345678`
+- `secretaria@example.com` / `12345678`
+
+### Comandos útiles Docker
+
+```powershell
+# Detener servicios
+docker-compose down
+
+# Reiniciar servicios
+docker-compose restart
+
+# Ver logs en tiempo real
+docker-compose logs -f api
+
+# Ejecutar comando dentro del contenedor
+docker-compose exec api python -m alembic current
+
+# Acceder a shell del contenedor
+docker-compose exec api bash
+
+# Acceder a PostgreSQL
+docker-compose exec db psql -U postgres -d sigetu
+
+# Reconstruir después de cambios
+docker-compose up -d --build
+```
+
+**Saltar a:** [Verificar instalación](#-verificar-que-funciona) | [Troubleshooting](#-troubleshooting)
+
+---
+
+## 📦 Instalación sin Docker (Manual)
+
+### Requisitos
+Verifica que tengas Python:
+```powershell
+python --version  # Debe ser 3.11+
+```
 
 ### Paso 1: Clonar el repositorio
 
@@ -57,9 +161,10 @@ Esto instalará:
 - Pydantic (validación)
 - python-jose (JWT)
 - Alembic (migraciones)
+- Firebase Admin SDK (notificaciones)
 - Y más (ver `requirements.txt`)
 
-### Paso 4: Crear base de datos
+### Paso 4: Configurar PostgreSQL
 
 Asegúrate de tener PostgreSQL corriendo, luego:
 
@@ -79,19 +184,25 @@ psql -U postgres -c "CREATE DATABASE sigetu;"
 Crea archivo `.env` en la raíz del proyecto:
 
 ```env
+# Base de datos (usa 'localhost' cuando NO uses Docker)
 DATABASE_URL=postgresql://postgres:tu_password@localhost:5432/sigetu
+
+# Seguridad
 SECRET_KEY=tu_clave_secreta_super_larga_y_segura_aqui
 ALGORITHM=HS256
+
+# Tokens
 ACCESS_TOKEN_EXPIRE_MINUTES=10080
 REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Firebase (opcional - para notificaciones push)
+FIREBASE_CREDENTIALS_PATH=./sigetu-b10c0-firebase-adminsdk-fbsvc-d3c8e11eaf.json
 ```
 
 **⚠️ Importante:**
 - Reemplaza `tu_password` con tu contraseña de PostgreSQL
-- Genera una SECRET_KEY segura (ej: resultado de `python -c "import secrets; print(secrets.token_urlsafe(32))"`)
+- Genera una SECRET_KEY segura: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 - No commitees el `.env` a Git (está en `.gitignore`)
-
-Ver archivo de ejemplo en [env.example](env.example)
 
 ### Paso 6: Aplicar migraciones
 
@@ -102,16 +213,17 @@ python -m alembic current
 # Aplicar todas las migraciones
 python -m alembic upgrade head
 
-# Ver versión actual (debe mostrar algo como "e4f1a9c2d7b8")
+# Verificar versión (debe mostrar el ID de la última migración)
 python -m alembic current
 ```
 
 Las migraciones crearán todas las tablas necesarias:
-- `users` (estudiantes, secretaría)
-- `roles` (admin, estudiante, secretaria)
-- `appointments` (citas académicas)
+- `users` (estudiantes, secretaría, administrativos)
+- `roles` (admin, estudiante, secretaria, administrativo)
+- `appointments` (citas académicas/administrativas)
 - `appointment_history` (histórico de citas)
 - `revoked_tokens` (tokens invalidados)
+- `fcm_device_tokens` (dispositivos para notificaciones)
 
 ### Paso 7: Iniciar el servidor
 
@@ -128,6 +240,8 @@ Deberías ver:
 INFO:     Uvicorn running on http://127.0.0.1:8000
 INFO:     Application startup complete
 ```
+
+---
 
 ## 🌐 Acceder a la API
 
@@ -239,7 +353,7 @@ pg_resetxlog -D "C:\Program Files\PostgreSQL\16\data"
 psql -U postgres -c "CREATE USER dev WITH PASSWORD '12345678';"
 ```
 
-### Error de migración: "FAILED: target database is not at a clean state"
+### Error de migración: "target database is not at a clean state"
 
 ```powershell
 # Ver estado
@@ -254,28 +368,67 @@ python -m alembic upgrade head
 
 ### El servidor inicia pero da error 422 en login
 
-Verifica que tus credenciales sean exactas y que existan usuarios en BD. Ejecuta seed:
+Verifica que tus credenciales sean exactas y que existan usuarios en BD. Los usuarios se crean automáticamente al iniciar la app, pero si necesitas recrearlos:
 
 ```powershell
-python -c "from app.db.seed import seed_roles, seed_default_users; from app.db.session import SessionLocal; db = SessionLocal(); seed_roles(db); seed_default_users(db)"
+python -c "from app.db.seed import seed_roles, seed_default_users; from app.db.session import SessionLocal; db = SessionLocal(); seed_roles(db); seed_default_users(db); db.close()"
 ```
 
-Usuario de ejemplo: `estudiante@example.com` / `12345678`
+Usuarios de ejemplo: 
+- `estudiante@example.com` / `12345678`
+- `secretaria@example.com` / `12345678`
+
+### Docker: "Cannot connect to the Docker daemon"
+
+Asegúrate de que Docker Desktop está corriendo:
+- Windows: Abre Docker Desktop desde el menú inicio
+- Verifica: `docker ps` debe funcionar
+
+### Docker: "port is already allocated"
+
+El puerto 8000 o 5432 está en uso:
+
+```powershell
+# Cambiar puerto de la API en docker-compose.yml
+ports:
+  - "8001:8000"  # Usa 8001 en vez de 8000
+
+# O detener el proceso que usa el puerto
+# Windows: netstat -ano | findstr :8000
+# Luego: taskkill /PID <proceso_id> /F
+```
 
 ## 📁 Estructura después de instalar
 
+### Con Docker
 ```
 sigetu-backend/
-├── venv/                    # Entorno virtual (no commitear)
+├── .env                         # Variables de entorno
+├── docker-compose.yml           # Orquestación
+├── Dockerfile                   # Imagen Docker
+├── start.sh                     # Script de inicio
+├── app/                         # Código fuente
+└── docs/                        # Documentación
+```
+
+### Sin Docker
+```
+sigetu-backend/
+├── venv/                        # Entorno virtual (no commitear)
+├── .env                         # Variables de entorno (no commitear)
 ├── app/
-│   ├── api/
+│   ├── api/routes/
+│   │   ├── estudiante/
+│   │   ├── secretaria/
+│   │   ├── rutas_autenticacion.py
+│   │   ├── rutas_notificaciones.py
+│   │   └── rutas_ws_citas.py
 │   ├── services/
 │   ├── models/
 │   ├── core/
 │   ├── db/
 │   └── main.py
 ├── alembic/
-├── .env                     # Variables de entorno (no commitear)
 ├── requirements.txt
 └── README.md
 ```

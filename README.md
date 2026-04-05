@@ -5,52 +5,66 @@ Sistema de gestión de citas académicas construido con **FastAPI**, **SQLAlchem
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI 0.131](https://img.shields.io/badge/fastapi-0.131-009688.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-12+-336791.svg)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](https://www.docker.com/)
 
 ## 📋 Acerca de
 
-SIGETU Backend permite a **estudiantes** crear y gestionar citas académicas, y a **secretaría** administrar la cola de atención en tiempo real.
+SIGETU Backend permite a **estudiantes** crear y gestionar citas académicas, y a **secretaría/administrativos** administrar la cola de atención en tiempo real.
 
 **Características principales:**
-- 🎓 Gestión de citas por categoría (académica, administrativa, financiera, otra)
-- 👥 Tres roles operativos con permisos diferenciados (estudiante, secretaría, administrativo)
-- 🔐 Autenticación con JWT y refresh tokens
+- 🎓 Gestión de citas por categoría y sede (académica, administrativa, financiera)
+- 👥 Sistema de roles con permisos diferenciados (estudiante, secretaría, administrativo)
+- 🔐 Autenticación JWT con refresh tokens
 - 📡 Actualizaciones en tiempo real vía WebSocket
+- 🔔 Notificaciones push con Firebase Cloud Messaging (FCM)
+- 🐳 Docker Compose para despliegue rápido
 - 🗄️ Migraciones versionadas con Alembic
-- 📚 Documentación interactiva en Swagger
-
-**Sede administrativa (categorías y contextos):**
-- `pagos_facturacion`: `pagos_con_tarjeta`, `validacion_pagos`, `facturacion_electronica`, `cruces_saldos_favor`, `aplicacion_descuentos`
-- `recibos_certificados`: `generacion_recibos`, `certificado_valores_pagados`, `constancias_certificados`
-- `creditos_financiacion`: `tramites_credito`, `financiacion_interna_externa`, `tramites_icetex`
-- `problemas_soporte_financiero`: `problemas_matriculas_financieras`
-- `plataformas_servicios`: `habilitacion_plataformas`
+- 📚 Documentación interactiva con Swagger
 
 ## 🚀 Quick Start
 
+### Opción 1: Con Docker (Recomendado)
+
 ```bash
-# 1. Clonar
+# 1. Clonar repositorio
 git clone <repo_url>
 cd sigetu-backend
 
-# 2. Instalar
-python -m venv venv
-.\venv\Scripts\Activate.ps1        # Windows PowerShell
-pip install -r requirements.txt
+# 2. Configurar variables de entorno
+cp .env.example .env
+# Editar .env con tus credenciales
 
-# 3. Configurar BD (.env)
-# DATABASE_URL=postgresql://user:pass@localhost:5432/sigetu
-# SECRET_KEY=tu_clave_secreta
+# 3. Ejecutar con Docker Compose
+docker-compose up -d
 
-# 4. Migraciones
-python -m alembic upgrade head
-
-# 5. Ejecutar
-uvicorn app.main:app --reload
+# 4. Ver logs
+docker-compose logs -f api
 ```
 
 Accede a **http://localhost:8000/docs** para la API interactiva.
 
-Para instalación detallada → [docs/QUICKSTART.md](docs/QUICKSTART.md)
+### Opción 2: Sin Docker (Instalación manual)
+
+```bash
+# 1. Crear entorno virtual
+python -m venv venv
+.\venv\Scripts\Activate.ps1        # Windows PowerShell
+
+# 2. Instalar dependencias
+pip install -r requirements.txt
+
+# 3. Configurar .env
+# DATABASE_URL=postgresql://postgres:password@localhost:5432/sigetu
+# SECRET_KEY=tu_clave_secreta_segura
+
+# 4. Ejecutar migraciones
+python -m alembic upgrade head
+
+# 5. Iniciar servidor
+uvicorn app.main:app --reload
+```
+
+**Para más detalles** → [docs/QUICKSTART.md](docs/QUICKSTART.md)
 
 ## 📚 Documentación
 
@@ -68,58 +82,15 @@ Toda la documentación está en la carpeta **`docs/`**:
 
 **👉 Comienza por [docs/START_HERE.md](docs/START_HERE.md)**
 
-## Paso a paso (recién clonado)
+## 👥 Usuarios de prueba
 
-## 1) Clonar el repositorio
+Al iniciar el servidor por primera vez, se crean automáticamente:
 
-```powershell
-git clone <URL_DEL_REPO>
-cd sigetu-backend
-```
-
-## 2) Crear y activar entorno virtual
-
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1        # Windows PowerShell
-pip install -r requirements.txt
-```
-
-## 3) Configurar PostgreSQL y variables de entorno
-
-Crea el archivo `.env`:
-
-```env
-DATABASE_URL=postgresql://postgres:password@localhost:5432/sigetu
-SECRET_KEY=tu-clave-secreta-segura
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=10080
-REFRESH_TOKEN_EXPIRE_DAYS=7
-```
-
-## 4) Ejecutar migraciones
-
-```powershell
-python -m alembic upgrade head
-python -m alembic current
-```
-
-## 5) Levantar el servidor
-
-```powershell
-uvicorn app.main:app --reload
-```
-
-Documentación: **http://localhost:8000/docs**
-
-## 6) Usuarios semilla
-
-Se crean automáticamente:
-
-| Email | Password | Rol |
-|-------|----------|-----|
-| `estudiante@example.com` | `12345678` | estudiante |
-| `secretaria@example.com` | `12345678` | secretaria |
+| Email | Password | Rol | Sede |
+|-------|----------|-----|------|
+| `estudiante@example.com` | `12345678` | estudiante | - |
+| `secretaria@example.com` | `12345678` | secretaria | Asistencia Estudiantil |
+| `admin@example.com` | `12345678` | administrativo | Administrativa |
 
 ---
 
@@ -143,43 +114,44 @@ Ver detalles en [docs/STRUCTURE.md](docs/STRUCTURE.md)
 
 ## 🔐 Roles y permisos
 
-| Rol | Permisos |
-|-----|----------|
-| **Estudiante** | Crear, ver y editar sus propias citas |
-| **Secretaría** | Ver cola, cambiar estados, ver historial |
-| **Administrativo** | Gestionar cola y estados de sede administrativa |
+| Rol | Permisos | Sede |
+|-----|----------|------|
+| **Estudiante** | Crear, ver y editar sus propias citas | Cualquiera |
+| **Secretaría** | Ver cola, cambiar estados, ver historial | Asistencia Estudiantil |
+| **Administrativo** | Ver cola, cambiar estados, ver historial | Administrativa (Financiera) |
 
-Autenticación por JWT. Ver [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md)
+**Autenticación:** JWT con access y refresh tokens. Ver [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md)
 
 ## 📡 API Endpoints principales
 
-### Autenticación
-- `POST /auth/register` - Registrar
-- `POST /auth/login` - Login (email/password)
-- `POST /auth/refresh` - Renovar token
-- `POST /auth/logout` - Logout
+### Autenticación (`/auth/*`)
+- `POST /auth/register` - Registrar nuevo usuario
+- `POST /auth/login` - Login con email/password
+- `POST /auth/refresh` - Renovar access token
+- `POST /auth/logout` - Cerrar sesión
 
-### Estudiante
+### Citas - Estudiante (`/appointments`)
 - `POST /appointments` - Crear cita
-- `GET /appointments/me` - Ver mis citas
+- `GET /appointments/me` - Ver todas mis citas
 - `GET /appointments/me/current` - Ver citas activas
 - `GET /appointments/me/history` - Ver historial
 - `PATCH /appointments/{id}` - Editar mi cita
+- `DELETE /appointments/{id}/cancel` - Cancelar mi cita
 
-### Secretaría
-- `GET /appointments/queue` - Ver cola
-- `GET /appointments/queue/history` - Ver historial
-- `PATCH /appointments/{id}/status` - Cambiar estado
+### Citas - Secretaría/Administrativo
+- `GET /appointments/queue` - Ver cola de atención
+- `GET /appointments/queue/history` - Ver historial atendidas
+- `GET /appointments/{id}/detail` - Ver detalles de cita
+- `PATCH /appointments/{id}/status` - Cambiar estado de cita
 
-### Administrativo
-- `GET /appointments/queue` - Ver cola de sede administrativa (rol `administrativo`)
-- `GET /appointments/queue/history` - Ver historial de sede administrativa
-- `PATCH /appointments/{id}/status` - Cambiar estado de citas de sede administrativa
+### Notificaciones (`/notifications`)
+- `POST /notifications/register-device` - Registrar dispositivo FCM
+- `POST /notifications/unregister-device` - Desregistrar dispositivo
 
-### WebSocket
+### WebSocket (`/ws/*`)
 - `WS /ws/appointments/{token}` - Actualizaciones en tiempo real
 
-Documentación interactiva: **http://localhost:8000/docs**
+**Documentación interactiva:** http://localhost:8000/docs
 
 ## 🗄️ Tecnologías
 
@@ -187,35 +159,51 @@ Documentación interactiva: **http://localhost:8000/docs**
 |-----------|-----------|
 | Framework | FastAPI 0.131 |
 | ORM | SQLAlchemy 2.0.46 |
-| Base de datos | PostgreSQL |
+| Base de datos | PostgreSQL 16 |
 | Migraciones | Alembic 1.18.4 |
 | Validación | Pydantic 2.12.5 |
 | Autenticación | JWT (python-jose) |
 | Hashing | bcrypt 3.2.2 |
+| Notificaciones | Firebase Admin SDK |
 | Servidor | Uvicorn (ASGI) |
+| Contenedores | Docker + Docker Compose |
 
-Ver `requirements.txt` para lista completa.
+Ver `requirements.txt` para la lista completa de dependencias.
 
 ## 📁 Estructura del proyecto
 
 ```
 sigetu-backend/
 ├── app/
-│   ├── api/routes/           # Endpoints HTTP/WS
-│   ├── services/             # Lógica de negocio
-│   ├── repositories/         # Acceso a datos
-│   ├── models/               # Modelos ORM
-│   ├── schemas/              # Validación Pydantic
-│   ├── core/                 # Config, auth, seguridad
-│   ├── db/                   # Sesiones, seeds
-│   └── main.py               # App principal
-├── alembic/                  # Migraciones
-├── .env                      # Variables de entorno
-├── requirements.txt          # Dependencias
-└── README.md                 # Este archivo
+│   ├── api/routes/              # Endpoints HTTP/WS
+│   │   ├── estudiante/          # Rutas de estudiantes
+│   │   ├── secretaria/          # Rutas de secretaría/admin
+│   │   ├── rutas_autenticacion.py
+│   │   ├── rutas_notificaciones.py
+│   │   └── rutas_ws_citas.py
+│   ├── services/                # Lógica de negocio
+│   ├── repositories/            # Acceso a datos
+│   ├── models/                  # Modelos ORM (SQLAlchemy)
+│   │   ├── modelo_usuario.py
+│   │   ├── modelo_cita.py
+│   │   ├── modelo_historial_cita.py
+│   │   ├── modelo_token_dispositivo_fcm.py
+│   │   └── ...
+│   ├── schemas/                 # Validación Pydantic
+│   ├── core/                    # Config, auth, seguridad
+│   ├── db/                      # Sesiones, seeds
+│   └── main.py                  # App principal FastAPI
+├── alembic/                     # Migraciones de base de datos
+├── docs/                        # Documentación del proyecto
+├── docker-compose.yml           # Orquestación Docker
+├── Dockerfile                   # Imagen Docker
+├── start.sh                     # Script de inicio
+├── .env                         # Variables de entorno (no commitear)
+├── requirements.txt             # Dependencias Python
+└── README.md                    # Este archivo
 ```
 
-Detalles: [docs/STRUCTURE.md](docs/STRUCTURE.md)
+**Detalles completos:** [docs/STRUCTURE.md](docs/STRUCTURE.md)
 
 ## ⚙️ Configuración
 
@@ -233,20 +221,36 @@ Ver [env.example](env.example)
 
 ## 🚀 Desarrollo
 
-### Iniciar servidor
+### Con Docker Compose
 
 ```bash
+# Iniciar servicios
+docker-compose up -d
+
+# Ver logs en tiempo real
+docker-compose logs -f api
+
+# Ejecutar migraciones
+docker-compose exec api python -m alembic upgrade head
+
+# Detener servicios
+docker-compose down
+```
+
+### Sin Docker
+
+```bash
+# Activar entorno virtual
+.\venv\Scripts\Activate.ps1
+
+# Iniciar servidor con hot-reload
 uvicorn app.main:app --reload
-```
 
-### Migraciones
-
-```bash
+# Ejecutar migraciones
 python -m alembic upgrade head
-python -m alembic history --verbose
 ```
 
-[Más comandos →](docs/COMMANDS.md)
+**Más comandos:** [docs/COMMANDS.md](docs/COMMANDS.md)
 
 ## 📖 Documentación completa
 
@@ -267,15 +271,16 @@ python -m alembic history --verbose
 
 [Troubleshooting completo →](docs/QUICKSTART.md#-troubleshooting)
 
-## 🔀 Workflow
+## 🔀 Workflow de desarrollo
 
-1. `git checkout -b feature/descripción`
-2. Implementar cambios
-3. Crear migración si cambió modelo
-4. Probar en http://localhost:8000/docs
-5. Commit y push
+1. Crear rama: `git checkout -b feature/descripcion`
+2. Implementar cambios siguiendo la arquitectura de capas
+3. Si cambiaste modelos: `python -m alembic revision --autogenerate -m "descripcion"`
+4. Aplicar migraciones: `python -m alembic upgrade head`
+5. Probar en http://localhost:8000/docs
+6. Commit y push
 
-Detalles: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+**Guía completa:** [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
 
 ---
 

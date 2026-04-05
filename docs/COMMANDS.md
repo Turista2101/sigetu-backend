@@ -4,41 +4,31 @@ Referencia de comandos para instalar, ejecutar, debuggear y administrar el proye
 
 ## 🚀 Inicio rápido
 
-### Activar entorno virtual
+### Con Docker Compose (Recomendado)
 
 ```powershell
-# Windows PowerShell
+# Iniciar servicios
+docker-compose up -d
+
+# Ver logs
+docker-compose logs -f api
+
+# Acceder a la API
+# http://localhost:8000/docs
+```
+
+### Sin Docker
+
+```powershell
+# Activar entorno virtual
 .\venv\Scripts\Activate.ps1
 
-# Windows CMD
-.\venv\Scripts\activate.bat
-
-# Linux/Mac bash
-source venv/bin/activate
-```
-
-### Iniciar servidor en desarrollo
-
-```powershell
-# Con hot-reload (recompila cambios automáticamente)
+# Iniciar servidor con hot-reload
 uvicorn app.main:app --reload
 
-# Sin reload
-uvicorn app.main:app
-
-# Con configuración avanzada
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level debug
+# Acceder a la API
+# http://localhost:8000/docs
 ```
-
-**Resultado esperado:**
-```
-INFO:     Uvicorn running on http://127.0.0.1:8000
-INFO:     Application startup complete
-```
-
-Luego accede a:
-- **API Docs (Swagger)**: http://localhost:8000/docs
-- **Alternate Docs (ReDoc)**: http://localhost:8000/redoc
 
 ---
 
@@ -423,25 +413,217 @@ git branch -D feature/vieja-funcionalidad
 
 ---
 
-## 🐳 Docker (si se usa)
+## 🐳 Docker y Docker Compose
 
-### Construir imagen
+### Ejecutar todo el stack (API + PostgreSQL)
 
 ```powershell
+# Iniciar servicios en segundo plano
+docker-compose up -d
+
+# Iniciar y ver logs en tiempo real
+docker-compose up
+
+# Ver logs de servicios corriendo
+docker-compose logs -f
+
+# Ver solo logs de API
+docker-compose logs -f api
+
+# Ver solo logs de BD
+docker-compose logs -f db
+
+# Detener servicios (mantiene volúmenes)
+docker-compose down
+
+# Detener y eliminar volúmenes (⚠️ BORRA DATOS)
+docker-compose down -v
+
+# Reiniciar servicios
+docker-compose restart
+
+# Reiniciar solo la API
+docker-compose restart api
+```
+
+### Gestión de servicios
+
+```powershell
+# Ver estado de servicios
+docker-compose ps
+
+# Ver procesos en contenedores
+docker-compose top
+
+# Detener servicios sin eliminarlos
+docker-compose stop
+
+# Iniciar servicios detenidos
+docker-compose start
+
+# Pausar servicios (congela procesos)
+docker-compose pause
+
+# Despausar servicios
+docker-compose unpause
+```
+
+### Comandos dentro de contenedores
+
+```powershell
+# Ejecutar comando en contenedor de API
+docker-compose exec api python -m alembic current
+
+# Crear nueva migración
+docker-compose exec api python -m alembic revision --autogenerate -m "descripcion"
+
+# Aplicar migraciones
+docker-compose exec api python -m alembic upgrade head
+
+# Shell interactivo en API
+docker-compose exec api bash
+
+# Python REPL en API
+docker-compose exec api python
+
+# Acceder a PostgreSQL
+docker-compose exec db psql -U postgres -d sigetu
+
+# Ejecutar script SQL
+docker-compose exec db psql -U postgres -d sigetu -f /ruta/script.sql
+```
+
+### Reconstruir y actualizar
+
+```powershell
+# Reconstruir imagen después de cambios
+docker-compose build
+
+# Reconstruir sin usar caché
+docker-compose build --no-cache
+
+# Reconstruir y reiniciar servicios
+docker-compose up -d --build
+
+# Forzar recreación de contenedores
+docker-compose up -d --force-recreate
+
+# Recrear solo la API
+docker-compose up -d --force-recreate api
+```
+
+### Ver y gestionar logs
+
+```powershell
+# Ver últimas 100 líneas
+docker-compose logs --tail=100
+
+# Ver logs desde una fecha
+docker-compose logs --since 2024-01-01
+
+# Ver logs hasta cierta hora
+docker-compose logs --until 2024-01-01T12:00:00
+
+# Guardar logs en archivo
+docker-compose logs > logs.txt
+```
+
+### Limpieza y mantenimiento
+
+```powershell
+# Eliminar contenedores detenidos
+docker-compose rm
+
+# Eliminar contenedores y volúmenes
+docker-compose rm -v
+
+# Ver uso de espacio
+docker system df
+
+# Limpiar recursos no usados
+docker system prune
+
+# Limpiar incluyendo volúmenes
+docker system prune --volumes
+
+# Ver volúmenes
+docker volume ls
+
+# Inspeccionar volumen de PostgreSQL
+docker volume inspect sigetu-backend_postgres_data
+```
+
+### Escalado y múltiples instancias
+
+```powershell
+# Escalar servicio (crear 3 instancias de API)
+docker-compose up -d --scale api=3
+
+# Nota: Debes quitar el mapeo de puertos fijo para esto
+```
+
+### Debugging y troubleshooting
+
+```powershell
+# Inspeccionar configuración
+docker-compose config
+
+# Validar docker-compose.yml
+docker-compose config --quiet
+
+# Ver variables de entorno de un servicio
+docker-compose exec api env
+
+# Ver recursos usados
+docker stats
+
+# Ver eventos de Docker
+docker events
+
+# Inspeccionar contenedor
+docker inspect sigetu_api
+
+# Ver logs de inicio de contenedor
+docker-compose logs api | grep "INFO"
+```
+
+### Copiar archivos
+
+```powershell
+# Copiar archivo AL contenedor
+docker cp archivo.txt sigetu_api:/app/
+
+# Copiar archivo DESDE contenedor
+docker cp sigetu_api:/app/logs/app.log ./
+
+# Copiar directorio
+docker cp ./backups sigetu_api:/app/
+```
+
+### Comandos útiles Docker (no compose)
+
+```powershell
+# Listar contenedores
+docker ps                    # Solo corriendo
+docker ps -a                 # Todos
+
+# Detener contenedor específico
+docker stop sigetu_api
+
+# Eliminar contenedor
+docker rm sigetu_api
+
+# Ver imágenes
+docker images
+
+# Eliminar imagen
+docker rmi sigetu-backend_api
+
+# Construir imagen manualmente
 docker build -t sigetu-backend:latest .
-```
 
-### Ejecutar contenedor
-
-```powershell
-docker run -p 8000:8000 --env-file .env.docker sigetu-backend:latest
-```
-
-### Ver logs
-
-```powershell
-docker logs <container_id>
-docker logs -f <container_id>  # Seguir logs
+# Ejecutar contenedor manual (sin compose)
+docker run -p 8000:8000 --env-file .env sigetu-backend:latest
 ```
 
 ---

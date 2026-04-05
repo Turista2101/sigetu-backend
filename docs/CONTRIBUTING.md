@@ -37,6 +37,11 @@ git checkout -b feature/nombre-descriptivo
 ### 2. Hacer cambios
 
 ```powershell
+# Con Docker (recomendado)
+docker-compose up -d
+docker-compose logs -f api
+
+# Sin Docker
 # Instalar dependencias si es necesario
 pip install -r requirements.txt
 
@@ -108,14 +113,16 @@ Antes de hacer push, verifica:
 ### Nombres de archivos
 
 ```python
-# Archivos de entidades
-user_model.py               # Modelo ORM
-user_schema.py              # Schema Pydantic
-user_repository.py          # Acceso a datos
-auth_service.py             # Servicio de autenticación
-auth_routes.py              # Rutas HTTP
+# Archivos de entidades (nomenclatura en español)
+modelo_usuario.py               # Modelo ORM
+esquema_usuario.py             # Schema Pydantic
+repositorio_usuario.py         # Acceso a datos
+servicio_autenticacion.py      # Servicio de autenticación
+rutas_autenticacion.py         # Rutas HTTP
+rutas_notificaciones.py        # Rutas de notificaciones FCM
+rutas_ws_citas.py             # WebSocket de citas
 
-# Convención: snake_case, sufijos descr ptivos
+# Convención: snake_case, sufijos descriptivos, español
 ```
 
 ### Nombres de variables
@@ -187,12 +194,12 @@ def create_appointment(
 ### Paso 1: Definir schema en `app/schemas/`
 
 ```python
-# appointment_schema.py
-class NewEndpointRequest(BaseModel):
+# esquema_cita.py
+class NuevoEndpointRequest(BaseModel):
     param1: str
     param2: int | None = None
 
-class NewEndpointResponse(BaseModel):
+class NuevoEndpointResponse(BaseModel):
     id: int
     result: str
 ```
@@ -200,19 +207,19 @@ class NewEndpointResponse(BaseModel):
 ### Paso 2: Agregar método en `app/services/`
 
 ```python
-# appointment_service.py
-class AppointmentService:
-    def new_business_logic(self, db: Session, param1: str) -> dict:
+# servicio_cita.py
+class ServicioCita:
+    def nueva_logica_negocio(self, db: Session, param1: str) -> dict:
         """Lógica de negocio aquí."""
         # Validaciones
         if not param1:
             raise HTTPException(status_code=400, detail="...")
         
         # Llamar a repository
-        result = self.repository.do_something(db, param1)
+        result = self.repositorio.hacer_algo(db, param1)
         
         # Publicar evento si corresponde
-        self._publish_realtime_event("event_type", object)
+        self._publicar_evento_tiempo_real("tipo_evento", objeto)
         
         return result
 ```
@@ -220,9 +227,9 @@ class AppointmentService:
 ### Paso 3: Agregar consulta en `app/repositories/`
 
 ```python
-# appointment_repository.py
-class AppointmentRepository:
-    def do_something(self, db: Session, param1: str) -> dict:
+# repositorio_cita.py
+class RepositorioCita:
+    def hacer_algo(self, db: Session, param1: str) -> dict:
         """Consulta a BD."""
         result = db.query(Appointment).filter(
             Appointment.name == param1
@@ -237,15 +244,15 @@ class AppointmentRepository:
 ### Paso 4: Exponer en ruta `app/api/routes/`
 
 ```python
-# estudiante/appointment_routes.py
-@router.post("/new-endpoint", response_model=NewEndpointResponse)
-def new_endpoint(
-    payload: NewEndpointRequest,
+# estudiante/rutas_cita.py
+@router.post("/nuevo-endpoint", response_model=NuevoEndpointResponse)
+def nuevo_endpoint(
+    payload: NuevoEndpointRequest,
     db: Session = Depends(get_db),
     token_payload: dict = Depends(require_student_role),
 ):
     """Endpoint description para Swagger."""
-    return service.new_business_logic(
+    return servicio.nueva_logica_negocio(
         db=db,
         param1=payload.param1
     )
@@ -254,6 +261,11 @@ def new_endpoint(
 ### Paso 5: Si cambió modelo, crear migración
 
 ```powershell
+# Con Docker
+docker-compose exec api python -m alembic revision --autogenerate -m "agregar nueva columna X"
+docker-compose exec api python -m alembic upgrade head
+
+# Sin Docker
 python -m alembic revision --autogenerate -m "agregar nueva columna X"
 python -m alembic upgrade head
 ```

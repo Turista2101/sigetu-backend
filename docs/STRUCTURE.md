@@ -59,15 +59,16 @@ def startup_event():
 
 ```
 api/routes/
-├── auth_routes.py              # Endpoints de autenticación
-├── appointments_ws_routes.py    # WebSocket para tiempo real
+├── rutas_autenticacion.py       # Endpoints de autenticación
+├── rutas_notificaciones.py      # Registro de dispositivos FCM
+├── rutas_ws_citas.py            # WebSocket para tiempo real
 ├── estudiante/
-│   └── appointment_routes.py    # Endpoints de estudiante
+│   └── rutas_cita.py            # Endpoints de estudiante
 └── secretaria/
-    └── appointment_routes.py    # Endpoints de secretaría
+    └── rutas_cita.py            # Endpoints de secretaría/admin
 ```
 
-### `auth_routes.py`
+### `rutas_autenticacion.py`
 
 Endpoints de autenticación:
 - `POST /auth/register` - Registrar nuevo usuario
@@ -85,7 +86,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 ---
 
-### `estudiante/appointment_routes.py`
+### `estudiante/rutas_cita.py`
 
 Endpoints de citas para estudiantes:
 
@@ -111,9 +112,9 @@ def create_appointment(
 
 ---
 
-### `secretaria/appointment_routes.py`
+### `secretaria/rutas_cita.py`
 
-Endpoints de citas para secretaría:
+Endpoints de citas para secretaría/administrativo:
 
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
@@ -137,7 +138,7 @@ def update_status(
 
 ---
 
-### `appointments_ws_routes.py`
+### `rutas_ws_citas.py`
 
 WebSocket para actualizaciones en tiempo real:
 
@@ -281,7 +282,7 @@ class RevokedTokenRepository:
 
 **Responsabilidad**: Definir estructura de tablas en BD.
 
-### `user_model.py`
+### `modelo_usuario.py`
 
 ```python
 class User(Base):
@@ -299,6 +300,7 @@ class User(Base):
     # Relaciones
     role: Role
     appointments: list[Appointment]
+    fcm_devices: list[FCMDeviceToken]
 ```
 
 **Tabla en BD:**
@@ -317,7 +319,7 @@ CREATE TABLE users (
 
 ---
 
-### `appointment_model.py`
+### `modelo_cita.py`
 
 ```python
 class Appointment(Base):
@@ -327,14 +329,17 @@ class Appointment(Base):
     student_id: int (FK → users)
     secretaria_id: int | None (FK → users)
     
-    sede: str (ej: "asistencia_estudiantil")
-    category: str (academico|administrativo|financiero|otro)
+    sede: str (ej: "asistencia_estudiantil", "administrativa")
+    category: str (academico|administrativo|financiero|otro o categorías de sede administrativa)
     context: str (descripción)
     status: str (pendiente|llamando|en_atencion|atendido|no_asistio|cancelada)
     turn_number: str (UNIQUE - ej: AE-20260303-001)
     
     created_at: datetime
     scheduled_at: datetime | None
+    attention_started_at: datetime | None  # Cuando empezó atención
+    extension_count: int (número de extensiones de tiempo)
+    device_id: str | None  # ID del dispositivo del estudiante
     
     # Relaciones
     student: User
@@ -347,20 +352,23 @@ class Appointment(Base):
 
 ---
 
-### `appointment_history_model.py`
+### `modelo_historial_cita.py`
 
 ```python
 class AppointmentHistory(Base):
     __tablename__ = "appointment_history"
     
     # Copia de campos de Appointment
-    # Más campo: archived_at
+    # Más campos:
+    # - archived_at: datetime
+    # - attention_started_at: datetime | None
+    # - device_id: str | None
     # Para auditoría de citas finalizadas
 ```
 
 ---
 
-### `role_model.py`
+### `modelo_rol.py`
 
 ```python
 class Role(Base):
@@ -375,7 +383,7 @@ class Role(Base):
 
 ---
 
-### `revoked_token_model.py`
+### `modelo_token_revocado.py`
 
 ```python
 class RevokedToken(Base):
@@ -385,6 +393,25 @@ class RevokedToken(Base):
     token: str (UNIQUE)
     revoked_at: datetime
     expires_at: datetime
+```
+
+---
+
+### `modelo_token_dispositivo_fcm.py`
+
+```python
+class FCMDeviceToken(Base):
+    __tablename__ = "fcm_device_tokens"
+    
+    id: int (PK)
+    user_id: int | None (FK → users, nullable)
+    device_id: str (UNIQUE)
+    fcm_token: str
+    created_at: datetime
+    updated_at: datetime
+    
+    # Relación
+    user: User | None
 ```
 
 ---
