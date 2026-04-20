@@ -97,11 +97,11 @@ Ver más detalles en [STRUCTURE.md](STRUCTURE.md).
 
 ## 👥 Roles del sistema
 
-| Rol | Capacidades | Sede |
-|-----|------------|------|
-| **Estudiante** | Crear citas, ver sus citas actuales e historial, editar/cancelar propias citas | Asistencia Estudiantil o Administrativa |
-| **Secretaría** | Ver cola de citas, cambiar estado, ver historial de atendidas | Asistencia Estudiantil |
-| **Administrativo** | Ver cola de citas, cambiar estado, ver historial de atendidas | Administrativa (Financiera) |
+| Rol | Capacidades |
+|-----|------------|
+| **Estudiante** | Crear citas, ver sus citas actuales e historial, editar/cancelar propias citas |
+| **Secretaría** | Ver cola de citas, cambiar estado, ver historial de atendidas |
+| **Administrativo** | Ver cola de citas, cambiar estado, ver historial de atendidas |
 
 ## 🔐 Autenticación
 
@@ -143,7 +143,8 @@ pendiente → llamando → en_atencion → atendido
 
 ### Administrativa (Financiera)
 - \pagos_facturacion\: Pagos con tarjeta, validación pagos, facturación electrónica
-- \ecibos_certificados\: Generación recibos, certificado valores pagados
+- \
+ecibos_certificados\: Generación recibos, certificado valores pagados
 - \creditos_financiacion\: Trámites crédito, ICETEX
 - \problemas_soporte_financiero\: Problemas matrículas financieras
 - \plataformas_servicios\: Habilitación plataformas

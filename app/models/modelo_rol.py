@@ -1,6 +1,6 @@
-"""Modelo ORM para catálogo de roles de usuario."""
+"""Modelo ORM para catalogo de roles de usuario."""
 
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 

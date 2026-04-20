@@ -42,7 +42,7 @@ async def websocket_citas(
                 websocket=websocket,
                 role=rol,
                 email=None,
-                programa_academico=None,
+                programa_academico_id=None,
                 device_id=device_id,
             )
             while True:
@@ -58,7 +58,7 @@ async def websocket_citas(
             websocket=websocket,
             role=rol,
             email=email,
-            programa_academico=usuario.programa_academico,
+            programa_academico_id=usuario.programa.id if usuario.programa else None,
         )
 
         while True:

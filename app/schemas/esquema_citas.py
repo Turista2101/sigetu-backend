@@ -6,27 +6,14 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, StringConstraints, field_validator
 
 
-TipoCategoria = Literal[
-    "academico",
-    "administrativo",
-    "financiero",
-    "otro",
-    "pagos_facturacion",
-    "recibos_certificados",
-    "creditos_financiacion",
-    "problemas_soporte_financiero",
-    "plataformas_servicios",
-    "informacion_academica",
-    "inscripcion_matricula",
-]
+TipoCategoria = str
 TipoEstado = Literal["pendiente", "llamando", "en_atencion", "atendido", "no_asistio", "cancelada"]
 
 
 class CrearCita(BaseModel):
     """Datos requeridos para crear una cita en una sede determinada."""
-    category: TipoCategoria
-    context: Annotated[str, StringConstraints(min_length=2, max_length=120, strip_whitespace=True)]
-    scheduled_at: datetime | None = None
+    contexto_id: int
+    scheduled_at: datetime
 
     @field_validator("scheduled_at", mode="before")
     @classmethod
@@ -43,8 +30,7 @@ class CrearCita(BaseModel):
 
 class ActualizarCita(BaseModel):
     """Payload parcial para editar una cita pendiente."""
-    category: TipoCategoria | None = None
-    context: Annotated[str, StringConstraints(min_length=2, max_length=120, strip_whitespace=True)] | None = None
+    contexto_id: int | None = None
     scheduled_at: datetime | None = None
 
     @field_validator("scheduled_at", mode="before")
@@ -70,7 +56,7 @@ class InfoEstudianteCita(BaseModel):
     id: int
     full_name: str
     email: str
-    programa_academico: str | None = None
+    programa_academico_id: int
 
 
 class RespuestaDetalleCita(BaseModel):
@@ -78,6 +64,7 @@ class RespuestaDetalleCita(BaseModel):
     id: int
     student_id: int | None
     device_id: str | None = None
+    contexto_id: int
     turn_number: str
     sede: str
     category: TipoCategoria
@@ -113,6 +100,7 @@ class RespuestaCita(BaseModel):
     student_id: int | None = None
     device_id: str | None = None
     student_name: str | None = None
+    contexto_id: int | None = None
     sede: str
     category: TipoCategoria
     context: str
@@ -131,6 +119,7 @@ class ItemColaCita(BaseModel):
     id: int
     student_name: str | None = None
     secretaria_name: str | None = None
+    contexto_id: int | None = None
     turn_number: str
     category: TipoCategoria
     context: str
@@ -148,10 +137,11 @@ class ItemHistorialCita(BaseModel):
     appointment_id: int
     student_id: int | None = None
     student_name: str | None = None
-    student_programa_academico: str | None = None
+    student_programa_academico_id: int | None = None
     secretaria_id: int | None = None
     secretaria_name: str | None = None
     device_id: str | None = None
+    contexto_id: int | None = None
     turn_number: str
     sede: str
     category: TipoCategoria

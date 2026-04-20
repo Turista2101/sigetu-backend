@@ -9,7 +9,7 @@ class GestorTiempoRealCitas:
     def __init__(self) -> None:
         self._conexiones: list[dict] = []
 
-    async def conectar(self, websocket: WebSocket, role: str, email: str | None, programa_academico: str | None, device_id: str | None = None) -> None:
+    async def conectar(self, websocket: WebSocket, role: str, email: str | None, programa_academico_id: int | None, device_id: str | None = None) -> None:
         """Registra una nueva conexión autenticada para recibir eventos en vivo."""
         await websocket.accept()
         self._conexiones.append(
@@ -17,7 +17,7 @@ class GestorTiempoRealCitas:
                 "websocket": websocket,
                 "role": role,
                 "email": email,
-                "programa_academico": programa_academico,
+                "programa_academico_id": programa_academico_id,
                 "device_id": device_id,
             }
         )
@@ -29,7 +29,7 @@ class GestorTiempoRealCitas:
     async def publicar_evento_cita(self, tipo_evento: str, cita) -> None:
         """Publica un evento de cita filtrando destinatarios por rol, sede y pertenencia."""
         estudiante = getattr(cita, "student", None)
-        programa_estudiante = getattr(estudiante, "programa_academico", None)
+        programa_estudiante = getattr(getattr(estudiante, "programa", None), "id", None)
         email_estudiante = getattr(estudiante, "email", None)
         sede_cita = getattr(cita, "sede", None)
 
@@ -41,7 +41,7 @@ class GestorTiempoRealCitas:
                 "turn_number": cita.turn_number,
                 "student_id": cita.student_id,
                 "student_name": getattr(estudiante, "full_name", None),
-                "programa_academico": programa_estudiante,
+                "programa_academico_id": programa_estudiante,
             },
         }
 
@@ -50,7 +50,7 @@ class GestorTiempoRealCitas:
         for item in self._conexiones:
             rol = item["role"]
             email = item["email"]
-            programa = item["programa_academico"]
+            programa = item["programa_academico_id"]
             websocket: WebSocket = item["websocket"]
 
             puede_recibir = False

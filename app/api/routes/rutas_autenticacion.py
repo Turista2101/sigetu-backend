@@ -41,7 +41,7 @@ def registrar(
         full_name=datos_usuario.full_name,
         email=datos_usuario.email,
         password=datos_usuario.password,
-        programa_academico=datos_usuario.programa_academico,
+        programa_academico_id=datos_usuario.programa_academico_id,
         device_id=device_id,
     )
     # Configurar refresh token como cookie HttpOnly para web

@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.models.modelo_historial_cita import AppointmentHistory
 from app.models.modelo_cita import Appointment
+from app.models.modelo_categoria import Categoria
+from app.models.modelo_contexto import Contexto
+from app.models.modelo_sede import Sede
 from app.models.modelo_usuario import User
 
 
@@ -67,38 +70,59 @@ class RepositorioCitas:
             .all()
         )
 
-    def obtener_cola(self, db: Session, sede: str, programa_academico: str | None = None) -> list[Appointment]:
-        """Consulta la cola activa por sede, incluyendo estudiantes e invitados."""
+    def obtener_cola(self, db: Session, sede_codigo: str, programa_academico_id: int | None = None) -> list[Appointment]:
+        """Consulta la cola activa por sede derivada desde el contexto, incluyendo estudiantes e invitados."""
         consulta = (
             db.query(Appointment)
+            .join(Contexto, Appointment.contexto_id == Contexto.id)
+            .join(Categoria, Contexto.categoria_id == Categoria.id)
+            .join(Sede, Categoria.sede_id == Sede.id)
             .filter(
-                Appointment.sede == sede,
+                Sede.codigo == sede_codigo,
                 Appointment.status.in_(["pendiente", "llamando", "en_atencion"]),
                 or_(Appointment.student_id != None, Appointment.device_id != None),
             )
             .order_by(Appointment.created_at.asc())
         )
 
-        if programa_academico is not None:
-            # Solo filtra por programa_academico si es estudiante
-            consulta = consulta.join(User, Appointment.student_id == User.id)
-            consulta = consulta.filter(User.programa_academico == programa_academico)
+        if programa_academico_id is not None:
+            # Filtra estudiantes por programa pero mantiene visibles citas de invitados.
+            consulta = consulta.outerjoin(User, Appointment.student_id == User.id)
+            consulta = consulta.filter(
+                or_(
+                    Appointment.student_id.is_(None),
+                    User.programa_academico_id == programa_academico_id,
+                )
+            )
 
         return consulta.all()
 
-    def obtener_historial_cola(self, db: Session, sede: str, secretaria_id: int | None = None) -> list[AppointmentHistory]:
-        """Consulta historial por sede y, cuando aplica, por usuario staff responsable."""
+    def obtener_historial_cola(
+        self,
+        db: Session,
+        sede: str,
+        programa_academico_id: int | None = None,
+    ) -> list[AppointmentHistory]:
+        """Consulta historial por sede y, cuando aplica, filtra estudiantes por programa."""
         consulta = (
             db.query(AppointmentHistory)
+            .join(Contexto, AppointmentHistory.contexto_id == Contexto.id)
+            .join(Categoria, Contexto.categoria_id == Categoria.id)
+            .join(Sede, Categoria.sede_id == Sede.id)
             .outerjoin(User, AppointmentHistory.student_id == User.id)
             .filter(
-                AppointmentHistory.sede == sede,
+                Sede.codigo == sede,
             )
             .order_by(AppointmentHistory.archived_at.desc())
         )
 
-        if secretaria_id is not None:
-            consulta = consulta.filter(AppointmentHistory.secretaria_id == secretaria_id)
+        if programa_academico_id is not None:
+            consulta = consulta.filter(
+                or_(
+                    AppointmentHistory.student_id.is_(None),
+                    User.programa_academico_id == programa_academico_id,
+                )
+            )
 
         return consulta.all()
 
@@ -113,13 +137,16 @@ class RepositorioCitas:
         """Consulta historial de citas atendidas por una secretaría específica."""
         consulta = (
             db.query(AppointmentHistory)
+            .join(Contexto, AppointmentHistory.contexto_id == Contexto.id)
+            .join(Categoria, Contexto.categoria_id == Categoria.id)
+            .join(Sede, Categoria.sede_id == Sede.id)
             .outerjoin(User, AppointmentHistory.student_id == User.id)
             .filter(AppointmentHistory.secretaria_id == secretaria_id)
             .order_by(AppointmentHistory.archived_at.desc())
         )
 
         if sede is not None:
-            consulta = consulta.filter(AppointmentHistory.sede == sede)
+            consulta = consulta.filter(Sede.codigo == sede)
 
         if fecha_inicio is not None:
             consulta = consulta.filter(AppointmentHistory.archived_at >= fecha_inicio)
@@ -151,9 +178,7 @@ class RepositorioCitas:
             student_id=cita.student_id,
             secretaria_id=secretaria_id,
             device_id=cita.device_id,
-            sede=cita.sede,
-            category=cita.category,
-            context=cita.context,
+            contexto_id=cita.contexto_id,
             status=estado_final,
             turn_number=cita.turn_number,
             created_at=cita.created_at,
@@ -177,7 +202,7 @@ class RepositorioCitas:
         db.refresh(cita)
         return cita
 
-    def siguiente_secuencia_turno(self, db: Session, sede: str, para_fecha: date) -> int:
+    def siguiente_secuencia_turno(self, db: Session, sede_codigo: str, para_fecha: date) -> int:
         """Calcula el siguiente consecutivo diario de turnos considerando activos e historial.
         
         Busca por prefijo del turn_number en lugar de por fecha de created_at,
@@ -187,8 +212,11 @@ class RepositorioCitas:
 
         turnos_activos = (
             db.query(Appointment.turn_number)
+            .join(Contexto, Appointment.contexto_id == Contexto.id)
+            .join(Categoria, Contexto.categoria_id == Categoria.id)
+            .join(Sede, Categoria.sede_id == Sede.id)
             .filter(
-                Appointment.sede == sede,
+                Sede.codigo == sede_codigo,
                 Appointment.turn_number.like(f"%-{prefijo}-%"),
             )
             .all()
@@ -196,8 +224,11 @@ class RepositorioCitas:
 
         turnos_historial = (
             db.query(AppointmentHistory.turn_number)
+            .join(Contexto, AppointmentHistory.contexto_id == Contexto.id)
+            .join(Categoria, Contexto.categoria_id == Categoria.id)
+            .join(Sede, Categoria.sede_id == Sede.id)
             .filter(
-                AppointmentHistory.sede == sede,
+                Sede.codigo == sede_codigo,
                 AppointmentHistory.turn_number.like(f"%-{prefijo}-%"),
             )
             .all()

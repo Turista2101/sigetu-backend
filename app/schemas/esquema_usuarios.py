@@ -2,14 +2,14 @@
 
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, StringConstraints
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Optional
 
 class CrearUsuario(BaseModel):
     """Payload para registrar estudiantes en el sistema."""
     email: EmailStr
     full_name: Annotated[str, StringConstraints(min_length=3, max_length=50, strip_whitespace=True)]
     password: Annotated[str, StringConstraints(min_length=8, max_length=128)]
-    programa_academico: Literal["ingenierias", "derecho", "finanzas"] | None = None
+    programa_academico_id: int
 
 
 class SolicitudLogin(BaseModel):
@@ -22,7 +22,7 @@ class RespuestaUsuario(BaseModel):
     id: int
     email: EmailStr
     full_name: str
-    programa_academico: Literal["ingenierias", "derecho", "finanzas"] | None
+    programa_academico_id: int
     is_active: bool
     created_at: datetime
 
@@ -72,3 +72,38 @@ class RespuestaInvitado(BaseModel):
     """Respuesta de acceso temporal para invitados."""
     access_token: str
     token_type: str = "bearer"
+
+
+class CrearUsuarioAdmin(BaseModel):
+    """Payload de creación de usuario para panel administrativo."""
+
+    email: EmailStr
+    full_name: Annotated[str, StringConstraints(min_length=3, max_length=150, strip_whitespace=True)]
+    password: Annotated[str, StringConstraints(min_length=8, max_length=128)]
+    programa_academico_id: int
+    role_id: int
+    is_active: bool = True
+
+
+class ActualizarUsuarioAdmin(BaseModel):
+    """Payload parcial de actualización de usuario para panel administrativo."""
+
+    email: EmailStr | None = None
+    full_name: Annotated[str, StringConstraints(min_length=3, max_length=150, strip_whitespace=True)] | None = None
+    password: Annotated[str, StringConstraints(min_length=8, max_length=128)] | None = None
+    programa_academico_id: int | None = None
+    role_id: int | None = None
+    is_active: bool | None = None
+
+
+class RespuestaUsuarioAdmin(BaseModel):
+    """Estructura pública extendida de usuario para administración."""
+
+    id: int
+    email: EmailStr
+    full_name: str
+    programa_academico_id: int
+    role_id: int
+    role_name: str
+    is_active: bool
+    created_at: datetime

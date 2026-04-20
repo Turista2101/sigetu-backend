@@ -75,6 +75,26 @@ def requerir_rol_secretaria_o_admin(carga: dict = Depends(obtener_payload_token_
     return carga
 
 
+def requerir_rol_staff(carga: dict = Depends(obtener_payload_token_actual)) -> dict:
+    """Permite acceso a cualquier rol interno que no sea estudiante o invitado."""
+    if carga.get("role") in {"estudiante", "guest"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo staff puede acceder a esta acción",
+        )
+    return carga
+
+
+def requerir_rol_admin(carga: dict = Depends(obtener_payload_token_actual)) -> dict:
+    """Restringe el endpoint a usuarios con rol admin."""
+    if carga.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo admin puede gestionar programas academicos",
+        )
+    return carga
+
+
 def requerir_rol_invitado(carga: dict = Depends(obtener_payload_token_actual)) -> dict:
     """Valida que el token pertenezca al flujo de usuario invitado."""
     if carga.get("role") != "guest":

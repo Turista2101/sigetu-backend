@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.dependencias_autenticacion import obtener_payload_token_actual, requerir_rol_secretaria_o_admin
+from app.core.dependencias_autenticacion import obtener_payload_token_actual
 from app.db.sesion import obtener_db
 from app.schemas.esquema_notificaciones import SolicitudRegistroTokenFCM, RespuestaRegistroTokenFCM
 from app.services.servicio_notificaciones import ServicioNotificaciones

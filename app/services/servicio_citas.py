@@ -1,6 +1,7 @@
 """Servicio de negocio para gestión de citas, cola, estados y reglas por sede."""
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
@@ -9,6 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.models.modelo_historial_cita import AppointmentHistory
 from app.models.modelo_cita import Appointment
+from app.models.modelo_contexto import Contexto
+from app.models.modelo_horario_sede import HorarioSede
+from app.models.modelo_sede import Sede
 from app.models.modelo_usuario import User
 from app.core.tiempo_real import gestor_tiempo_real_citas
 from app.repositories.repositorio_citas import RepositorioCitas
@@ -22,90 +26,83 @@ SEDE_ADMISIONES_MERCADEO = "sede_admisiones_mercadeo"
 
 # CAMBIO: Zona horaria de Colombia (UTC-5) como constante global
 COLOMBIA_TZ = timezone(timedelta(hours=-5))
-
-CATEGORIAS_CONTEXTO_ADMINISTRATIVA: dict[str, set[str]] = {
-    "pagos_facturacion": {
-        "pagos_con_tarjeta",
-        "validacion_pagos",
-        "facturacion_electronica",
-        "cruces_saldos_favor",
-        "aplicacion_descuentos",
-    },
-    "recibos_certificados": {
-        "generacion_recibos",
-        "certificado_valores_pagados",
-        "constancias_certificados",
-    },
-    "creditos_financiacion": {
-        "tramites_credito",
-        "financiacion_interna_externa",
-        "tramites_icetex",
-    },
-    "problemas_soporte_financiero": {
-        "problemas_matriculas_financieras",
-    },
-    "plataformas_servicios": {
-        "habilitacion_plataformas",
-    },
-}
-
-CATEGORIAS_CONTEXTO_ADMISIONES_MERCADEO: dict[str, set[str]] = {
-    "informacion_academica": {
-        "informacion_primer_semestre",
-        "informacion_pregrados_posgrados",
-    },
-    "inscripcion_matricula": {
-        "informacion_matricula_nuevos_primer_semestre",
-    },
-}
-
+logger = logging.getLogger(__name__)
 
 class ServicioCitas:
-    """Centraliza reglas de negocio de citas para estudiantes y personal de atención."""
-
-    def actualizar_cita_invitado(
-            self,
-            db: Session,
-            appointment_id: int,
-            payload: ActualizarCita,
-            device_id: str,
-        ) -> Appointment:
-            """Permite editar cita pendiente de invitado validando reglas de sede."""
-            cita = self.repositorio.obtener_por_id(db=db, appointment_id=appointment_id)
-            if not cita:
-                raise HTTPException(status_code=404, detail="Cita no encontrada")
-            if cita.device_id != device_id:
-                raise HTTPException(status_code=403, detail="No puedes modificar una cita de otro dispositivo")
-            if cita.status != "pendiente":
-                raise HTTPException(status_code=400, detail="Solo se pueden editar citas en estado pendiente")
-            if payload.category is None and payload.context is None and payload.scheduled_at is None:
-                raise HTTPException(status_code=400, detail="Debes enviar al menos un campo para actualizar")
-            categoria_objetivo = payload.category or cita.category
-            contexto_objetivo = payload.context or cita.context
-            self._validar_categoria_contexto_por_sede(cita.sede, categoria_objetivo, contexto_objetivo)
-            self._validar_fecha_agendada(db, payload.scheduled_at, sede=cita.sede, excluir_cita_id=appointment_id)
-            actualizada = self.repositorio.actualizar(
-                db=db,
-                cita=cita,
-                category=payload.category,
-                context=payload.context,
-                scheduled_at=payload.scheduled_at,
-            )
-            self._publicar_evento_realtime("appointment_updated", actualizada)
-            # Notificación push a invitado
-            self.servicio_notificaciones.notificar_estado_cita_invitado(
-                db=db,
-                device_id=device_id,
-                nuevo_estado=actualizada.status,
-                turno=actualizada.turn_number,
-            )
-            return actualizada
     """Centraliza reglas de negocio de citas para estudiantes y personal de atención."""
 
     def __init__(self):
         self.repositorio = RepositorioCitas()
         self.servicio_notificaciones = ServicioNotificaciones()
         self.estados_finales = {"atendido", "no_asistio", "cancelada"}
+
+    def _obtener_usuario_staff(self, db: Session, staff_email: str) -> User:
+        """Obtiene un usuario staff con asignación operativa vigente."""
+        usuario = db.query(User).filter(User.email == staff_email).first()
+        if not usuario:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        if usuario.staff is None or not usuario.staff.activo:
+            raise HTTPException(status_code=403, detail="El usuario no tiene asignación staff activa")
+        return usuario
+
+    def _obtener_sede_staff(self, db: Session, staff_email: str) -> Sede:
+        """Obtiene la sede operativa del staff desde su asignación en tabla staff."""
+        usuario = self._obtener_usuario_staff(db=db, staff_email=staff_email)
+        sede = usuario.staff.sede if usuario.staff else None
+        if sede is None or not sede.activo:
+            raise HTTPException(status_code=403, detail="El usuario no tiene una sede activa asociada")
+        return sede
+
+    def actualizar_cita_invitado(
+        self,
+        db: Session,
+        appointment_id: int,
+        payload: ActualizarCita,
+        device_id: str,
+    ) -> Appointment:
+        """Permite editar cita pendiente de invitado validando reglas de sede."""
+        cita = self.repositorio.obtener_por_id(db=db, appointment_id=appointment_id)
+        if not cita:
+            raise HTTPException(status_code=404, detail="Cita no encontrada")
+        if cita.device_id != device_id:
+            raise HTTPException(status_code=403, detail="No puedes modificar una cita de otro dispositivo")
+        if cita.status != "pendiente":
+            raise HTTPException(status_code=400, detail="Solo se pueden editar citas en estado pendiente")
+        if payload.contexto_id is None and payload.scheduled_at is None:
+            raise HTTPException(status_code=400, detail="Debes enviar al menos un campo para actualizar")
+        contexto_id_objetivo = payload.contexto_id or cita.contexto_id
+        self._obtener_contexto_activo_por_id(db=db, contexto_id=contexto_id_objetivo)
+        self._validar_fecha_agendada(db, payload.scheduled_at, contexto_id=contexto_id_objetivo, excluir_cita_id=appointment_id)
+        actualizada = self.repositorio.actualizar(
+            db=db,
+            cita=cita,
+            contexto_id=payload.contexto_id,
+            scheduled_at=payload.scheduled_at,
+        )
+        self._publicar_evento_realtime("appointment_updated", actualizada)
+        self.servicio_notificaciones.notificar_estado_cita_invitado(
+            db=db,
+            device_id=device_id,
+            nuevo_estado=actualizada.status,
+            turno=actualizada.turn_number,
+        )
+        return actualizada
+
+    def _obtener_contexto_activo_por_id(self, db: Session, contexto_id: int) -> Contexto:
+        contexto = db.query(Contexto).filter(Contexto.id == contexto_id).first()
+        if not contexto or not contexto.activo:
+            raise HTTPException(status_code=404, detail="Contexto no encontrado o inactivo")
+        if contexto.categoria is None or contexto.categoria.sede is None or not contexto.categoria.sede.activo:
+            raise HTTPException(status_code=404, detail="Contexto sin sede activa asociada")
+        return contexto
+
+    def _obtener_sede_desde_contexto(self, contexto: Contexto) -> Sede:
+        if contexto.categoria is None or contexto.categoria.sede is None:
+            raise HTTPException(status_code=404, detail="Contexto sin sede asociada")
+        sede = contexto.categoria.sede
+        if not sede.activo:
+            raise HTTPException(status_code=404, detail="Sede no encontrada o inactiva")
+        return sede
 
     def _normalizar_a_colombia_naive(self, valor: datetime) -> datetime:
         """Convierte cualquier datetime a hora Colombia naive para persistencia consistente.
@@ -120,10 +117,10 @@ class ServicioCitas:
         self,
         db: Session,
         scheduled_at: datetime | None,
-        sede: str,
+        contexto_id: int,
         excluir_cita_id: int | None = None,
     ) -> None:
-        """Valida disponibilidad de `scheduled_at` por sede y evita fechas en pasado."""
+        """Valida disponibilidad de `scheduled_at` por contexto y evita fechas en pasado."""
         if scheduled_at is None:
             return
 
@@ -137,8 +134,32 @@ class ServicioCitas:
                 detail="No se puede agendar una cita en una fecha u hora pasada",
             )
 
+        contexto = db.query(Contexto).filter(Contexto.id == contexto_id).first()
+        if not contexto or not contexto.categoria or not contexto.categoria.sede:
+            raise HTTPException(status_code=404, detail="Contexto sin sede activa asociada")
+
+        sede = contexto.categoria.sede
+        dia_semana = fecha_normalizada.weekday()
+        hora_cita = fecha_normalizada.time()
+        bloque_disponible = (
+            db.query(HorarioSede)
+            .filter(
+                HorarioSede.sede_id == sede.id,
+                HorarioSede.dia_semana == dia_semana,
+                HorarioSede.activo.is_(True),
+                HorarioSede.hora_inicio <= hora_cita,
+                HorarioSede.hora_fin > hora_cita,
+            )
+            .first()
+        )
+        if not bloque_disponible:
+            raise HTTPException(
+                status_code=400,
+                detail="La fecha y hora agendada está fuera del horario de atención de la sede",
+            )
+
         consulta = db.query(Appointment).filter(
-            Appointment.sede == sede,
+            Appointment.contexto_id == contexto_id,
             Appointment.scheduled_at == fecha_normalizada,
         )
         if excluir_cita_id is not None:
@@ -167,16 +188,6 @@ class ServicioCitas:
         except RuntimeError:
             asyncio.run(awaitable)
 
-    def _resolver_sede_por_rol(self, role: str) -> str:
-        """Mapea cada rol operativo a la sede que tiene autorizada."""
-        if role == "secretaria":
-            return SEDE_ASISTENCIA
-        if role == "administrativo":
-            return SEDE_ADMINISTRATIVA
-        if role == "admisiones_mercadeo":
-            return SEDE_ADMISIONES_MERCADEO
-        raise HTTPException(status_code=403, detail="Rol sin acceso a gestión de sedes")
-
     def _prefijo_turno_por_sede(self, sede: str) -> str:
         """Retorna prefijo de turno según sede para trazabilidad operativa."""
         if sede == SEDE_ADMINISTRATIVA:
@@ -185,72 +196,8 @@ class ServicioCitas:
             return "AM"
         return "AE"
 
-    def _categorias_contexto_por_sede(self, sede: str) -> dict[str, set[str]] | None:
-        """Devuelve catálogo de categorías/contextos válidos para sedes especializadas."""
-        if sede == SEDE_ADMINISTRATIVA:
-            return CATEGORIAS_CONTEXTO_ADMINISTRATIVA
-        if sede == SEDE_ADMISIONES_MERCADEO:
-            return CATEGORIAS_CONTEXTO_ADMISIONES_MERCADEO
-        return None
-
-    def _validar_categoria_contexto_por_sede(self, sede: str, category: str | None, context: str | None) -> None:
-        """Aplica validación de categoría y contexto según configuración de sede."""
-        categorias_contexto = self._categorias_contexto_por_sede(sede)
-        if categorias_contexto is None:
-            return
-
-        if category is None or context is None:
-            return
-
-        contextos_validos = categorias_contexto.get(category)
-        if contextos_validos is None:
-            categorias = ", ".join(sorted(categorias_contexto.keys()))
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Categoría inválida para la sede '{sede}'. "
-                    f"Categorías permitidas: {categorias}"
-                ),
-            )
-
-        if context not in contextos_validos:
-            contextos = ", ".join(sorted(contextos_validos))
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Contexto inválido para la categoría '{category}' en la sede '{sede}'. "
-                    f"Contextos permitidos: {contextos}"
-                ),
-            )
-
-    def _validar_categoria_contexto_administrativa(self, category: str | None, context: str | None) -> None:
-        """Compatibilidad histórica: valida categoría/contexto de sede administrativa."""
-        if category is None or context is None:
-            return
-
-        contextos_validos = CATEGORIAS_CONTEXTO_ADMINISTRATIVA.get(category)
-        if contextos_validos is None:
-            categorias = ", ".join(sorted(CATEGORIAS_CONTEXTO_ADMINISTRATIVA.keys()))
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Categoría inválida para sede administrativa. "
-                    f"Categorías permitidas: {categorias}"
-                ),
-            )
-
-        if context not in contextos_validos:
-            contextos = ", ".join(sorted(contextos_validos))
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Contexto inválido para la categoría '{category}' en sede administrativa. "
-                    f"Contextos permitidos: {contextos}"
-                ),
-            )
-
-    def obtener_horarios_ocupados(self, db: Session, sede: str = SEDE_ASISTENCIA) -> RespuestaHorariosOcupados:
-        """Lista horarios ocupados y su estado activo para una sede específica.
+    def obtener_horarios_ocupados(self, db: Session, contexto_id: int) -> RespuestaHorariosOcupados:
+        """Lista horarios ocupados y su estado activo para un contexto específico.
 
         CORRECCIÓN 3: Filtra citas cuyo scheduled_at ya pasó usando hora Colombia.
         """
@@ -260,7 +207,7 @@ class ServicioCitas:
         filas = (
             db.query(Appointment.scheduled_at, Appointment.status, Appointment.attention_started_at, Appointment.extension_count)
             .filter(
-                Appointment.sede == sede,
+                Appointment.contexto_id == contexto_id,
                 Appointment.scheduled_at.isnot(None),
                 Appointment.status.in_(estados_activos),
                 Appointment.scheduled_at >= ahora_colombia,  # CORRECCIÓN 3: Solo citas futuras o actuales
@@ -283,7 +230,6 @@ class ServicioCitas:
         payload: CrearCita,
         student_email: str | None = None,
         device_id: str | None = None,
-        sede: str = SEDE_ASISTENCIA,
     ) -> Appointment:
         """Crea una cita para estudiante o invitado respetando reglas de sede y disponibilidad."""
         if student_email is None and device_id is None:
@@ -301,25 +247,28 @@ class ServicioCitas:
                 raise HTTPException(status_code=404, detail="Estudiante no encontrado")
             estudiante_id = estudiante.id
 
-        self._validar_fecha_agendada(db, payload.scheduled_at, sede=sede)
-        self._validar_categoria_contexto_por_sede(sede, payload.category, payload.context)
+        contexto = self._obtener_contexto_activo_por_id(db=db, contexto_id=payload.contexto_id)
+        sede = self._obtener_sede_desde_contexto(contexto)
+        if device_id and not sede.es_publica:
+            raise HTTPException(
+                status_code=403,
+                detail="Esta sede es privada y requiere cuenta de estudiante para agendar citas",
+            )
+        self._validar_fecha_agendada(db, payload.scheduled_at, contexto_id=contexto.id)
 
         # CAMBIO: Usar hora de Colombia para obtener la fecha local correcta
         hoy = datetime.now(COLOMBIA_TZ).replace(tzinfo=None).date()
-        print(f"[DEBUG] hoy Colombia: {hoy}", flush=True)
+        logger.debug("hoy Colombia para secuencia de turnos: %s", hoy)
 
-        ultimo_error: IntegrityError | None = None
         for _ in range(3):
-            sec_turno = self.repositorio.siguiente_secuencia_turno(db, sede=sede, para_fecha=hoy)
-            prefijo_turno = self._prefijo_turno_por_sede(sede)
+            sec_turno = self.repositorio.siguiente_secuencia_turno(db, sede_codigo=sede.codigo, para_fecha=hoy)
+            prefijo_turno = self._prefijo_turno_por_sede(sede.codigo)
             numero_turno = f"{prefijo_turno}-{hoy.strftime('%Y%m%d')}-{sec_turno:03d}"
 
             cita = Appointment(
                 student_id=estudiante_id,
                 device_id=device_id,
-                sede=sede,
-                category=payload.category,
-                context=payload.context,
+                contexto_id=payload.contexto_id,
                 status="pendiente",
                 turn_number=numero_turno,
                 scheduled_at=payload.scheduled_at,
@@ -339,53 +288,49 @@ class ServicioCitas:
                 return cita
             except IntegrityError as exc:
                 db.rollback()
-                ultimo_error = exc
+                logger.warning("Conflicto de integridad al crear cita, reintentando: %s", exc)
         raise HTTPException(status_code=409, detail="No se pudo crear la cita: conflicto de horario")
 
     def obtener_cola(
         self,
         db: Session,
         staff_email: str,
-        staff_role: str,
     ) -> list[Appointment]:
         """Obtiene cola activa de la sede del staff autenticado."""
-        sede = self._resolver_sede_por_rol(staff_role)
-        secretaria = db.query(User).filter(User.email == staff_email).first()
-        if not secretaria:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        usuario = self._obtener_usuario_staff(db=db, staff_email=staff_email)
+        sede = self._obtener_sede_staff(db=db, staff_email=staff_email)
+        filtrar_por_programa = bool(sede.filtrar_citas_por_programa)
 
-        if staff_role == "secretaria" and not secretaria.programa_academico:
+        if filtrar_por_programa and not usuario.programa:
             raise HTTPException(status_code=403, detail="El usuario no tiene programa_academico asignado")
 
-        programa_academico = secretaria.programa_academico if staff_role == "secretaria" else None
+        programa_academico_id = usuario.programa.id if filtrar_por_programa else None
 
         return self.repositorio.obtener_cola(
             db,
-            sede=sede,
-            programa_academico=programa_academico,
+            sede_codigo=sede.codigo,
+            programa_academico_id=programa_academico_id,
         )
 
     def obtener_historial_cola(
         self,
         db: Session,
         staff_email: str,
-        staff_role: str,
     ) -> list[AppointmentHistory]:
         """Obtiene historial de atención de la sede del staff autenticado."""
-        sede = self._resolver_sede_por_rol(staff_role)
-        secretaria = db.query(User).filter(User.email == staff_email).first()
-        if not secretaria:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        usuario = self._obtener_usuario_staff(db=db, staff_email=staff_email)
+        sede = self._obtener_sede_staff(db=db, staff_email=staff_email)
+        filtrar_por_programa = bool(sede.filtrar_citas_por_programa)
 
-        if staff_role == "secretaria" and not secretaria.programa_academico:
+        if filtrar_por_programa and not usuario.programa:
             raise HTTPException(status_code=403, detail="El usuario no tiene programa_academico asignado")
 
-        secretaria_id = secretaria.id if staff_role == "secretaria" else None
+        programa_academico_id = usuario.programa.id if filtrar_por_programa else None
 
         return self.repositorio.obtener_historial_cola(
             db,
-            sede=sede,
-            secretaria_id=secretaria_id,
+            sede=sede.codigo,
+            programa_academico_id=programa_academico_id,
         )
 
     def obtener_historial_secretaria(
@@ -429,9 +374,9 @@ class ServicioCitas:
             if not estudiante:
                 raise HTTPException(status_code=404, detail="Estudiante no encontrado")
 
-        if requester_role in {"secretaria", "administrativo", "admisiones_mercadeo"}:
-            sede_permitida = self._resolver_sede_por_rol(requester_role)
-            if cita.sede != sede_permitida:
+        if requester_role not in {"estudiante", "guest"}:
+            sede_permitida = self._obtener_sede_staff(db=db, staff_email=requester_email)
+            if cita.sede != sede_permitida.codigo:
                 raise HTTPException(status_code=403, detail="No puedes ver citas de otra sede")
 
         # Construir respuesta compatible para ambos casos
@@ -439,6 +384,7 @@ class ServicioCitas:
             "id": cita.id,
             "student_id": cita.student_id,
             "device_id": cita.device_id,
+            "contexto_id": cita.contexto_id,
             "turn_number": cita.turn_number,
             "sede": cita.sede,
             "category": cita.category,
@@ -454,7 +400,7 @@ class ServicioCitas:
                 "id": estudiante.id,
                 "full_name": estudiante.full_name,
                 "email": estudiante.email,
-                "programa_academico": getattr(estudiante, "programa_academico", None),
+                "programa_academico_id": estudiante.programa.id,
             }
         else:
             detalle["student"] = None
@@ -519,20 +465,17 @@ class ServicioCitas:
         if cita.status != "pendiente":
             raise HTTPException(status_code=400, detail="Solo se pueden editar citas en estado pendiente")
 
-        if payload.category is None and payload.context is None and payload.scheduled_at is None:
+        if payload.contexto_id is None and payload.scheduled_at is None:
             raise HTTPException(status_code=400, detail="Debes enviar al menos un campo para actualizar")
 
-        categoria_objetivo = payload.category or cita.category
-        contexto_objetivo = payload.context or cita.context
-        self._validar_categoria_contexto_por_sede(cita.sede, categoria_objetivo, contexto_objetivo)
-
-        self._validar_fecha_agendada(db, payload.scheduled_at, sede=cita.sede, excluir_cita_id=appointment_id)
+        contexto_id_objetivo = payload.contexto_id or cita.contexto_id
+        self._obtener_contexto_activo_por_id(db=db, contexto_id=contexto_id_objetivo)
+        self._validar_fecha_agendada(db, payload.scheduled_at, contexto_id=contexto_id_objetivo, excluir_cita_id=appointment_id)
 
         actualizada = self.repositorio.actualizar(
             db=db,
             cita=cita,
-            category=payload.category,
-            context=payload.context,
+            contexto_id=payload.contexto_id,
             scheduled_at=payload.scheduled_at,
         )
         self._publicar_evento_realtime("appointment_updated", actualizada)
@@ -592,14 +535,14 @@ class ServicioCitas:
         )
         return archivada
 
-    def iniciar_atencion(self, db: Session, appointment_id: int, staff_email: str, staff_role: str) -> Appointment:
+    def iniciar_atencion(self, db: Session, appointment_id: int, staff_email: str) -> Appointment:
         """Marca una cita como `en_atencion` por un miembro del staff autorizado."""
         cita = self.repositorio.obtener_por_id(db, appointment_id)
         if not cita:
             raise HTTPException(status_code=404, detail="Cita no encontrada")
 
-        sede_permitida = self._resolver_sede_por_rol(staff_role)
-        if cita.sede != sede_permitida:
+        sede_permitida = self._obtener_sede_staff(db=db, staff_email=staff_email)
+        if cita.sede != sede_permitida.codigo:
             raise HTTPException(status_code=403, detail="No puedes gestionar citas de otra sede")
 
         if cita.status != "llamando":
@@ -649,14 +592,14 @@ class ServicioCitas:
         
         return cita
 
-    def extender_tiempo(self, db: Session, appointment_id: int, staff_email: str, staff_role: str) -> RespuestaExtenderTiempo:
+    def extender_tiempo(self, db: Session, appointment_id: int, staff_email: str) -> RespuestaExtenderTiempo:
         """Extiende 15 minutos la cita en atención y reajusta turnos siguientes en la misma sede."""
         cita = self.repositorio.obtener_por_id(db, appointment_id)
         if not cita:
             raise HTTPException(status_code=404, detail="Cita no encontrada")
 
-        sede_permitida = self._resolver_sede_por_rol(staff_role)
-        if cita.sede != sede_permitida:
+        sede_permitida = self._obtener_sede_staff(db=db, staff_email=staff_email)
+        if cita.sede != sede_permitida.codigo:
             raise HTTPException(status_code=403, detail="No puedes gestionar citas de otra sede")
 
         if cita.status != "en_atencion":
@@ -678,7 +621,7 @@ class ServicioCitas:
             db.query(Appointment)
             .filter(
                 Appointment.id != cita.id,
-                Appointment.sede == cita.sede,
+                Appointment.contexto_id == cita.contexto_id,
                 Appointment.status.in_({"pendiente", "llamando"}),
                 Appointment.scheduled_at.isnot(None),
                 Appointment.scheduled_at > cita.scheduled_at,
@@ -730,9 +673,9 @@ class ServicioCitas:
         if not cita:
             raise HTTPException(status_code=404, detail="Cita no encontrada")
 
-        if changed_by_role in {"secretaria", "administrativo", "admisiones_mercadeo"}:
-            sede_permitida = self._resolver_sede_por_rol(changed_by_role)
-            if cita.sede != sede_permitida:
+        if changed_by_role not in {"estudiante", "guest"}:
+            sede_permitida = self._obtener_sede_staff(db=db, staff_email=changed_by_email)
+            if cita.sede != sede_permitida.codigo:
                 raise HTTPException(status_code=403, detail="No puedes gestionar citas de otra sede")
 
         modificado_por = db.query(User).filter(User.email == changed_by_email).first()
@@ -791,7 +734,7 @@ class ServicioCitas:
                         siguientes = (
                             db.query(Appointment)
                             .filter(
-                                Appointment.sede == cita.sede,
+                                Appointment.contexto_id == cita.contexto_id,
                                 Appointment.status.in_({"pendiente", "llamando"}),
                                 Appointment.scheduled_at.isnot(None),
                                 Appointment.scheduled_at > scheduled_at_original,

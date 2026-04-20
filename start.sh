@@ -1,9 +1,6 @@
 #!/bin/bash
 set -e
 
-echo "Marcando migraciones como aplicadas..."
-python -m alembic stamp head || true
-
 echo "Corriendo migraciones..."
 python -m alembic upgrade head
 

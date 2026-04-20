@@ -1,8 +1,10 @@
 """Modelo ORM de usuarios autenticados del sistema."""
 
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+
 from app.db.base import Base
 
 class User(Base):
@@ -17,7 +19,7 @@ class User(Base):
 
     full_name = Column(String(150), nullable=False)
 
-    programa_academico = Column(String(50), nullable=True)
+    programa_academico_id = Column(Integer, ForeignKey("programas_academicos.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     is_active = Column(Boolean, default=True)
 
@@ -26,6 +28,8 @@ class User(Base):
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
 
     role = relationship("Role", back_populates="users")
+    programa = relationship("ProgramaAcademico", back_populates="users", foreign_keys=[programa_academico_id])
+    staff = relationship("Staff", back_populates="user", uselist=False, cascade="all, delete-orphan", passive_deletes=True)
     appointments = relationship(
         "Appointment",
         back_populates="student",

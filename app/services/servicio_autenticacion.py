@@ -10,11 +10,10 @@ from app.core.configuracion import ALGORITHM, SECRET_KEY
 from app.core.seguridad import hashear_contrasena, verificar_contrasena, crear_token_acceso, crear_token_refresco, crear_token_invitado
 from app.models.modelo_rol import Role
 from app.models.modelo_cita import Appointment
+from app.models.modelo_programa_academico import ProgramaAcademico
 
 class ServicioAutenticacion:
     """Orquesta validación de credenciales, emisión de JWT y revocación de refresh tokens."""
-
-    PROGRAMAS_PERMITIDOS = {"ingenierias", "derecho", "finanzas"}
 
     def __init__(self):
         self.repositorio_usuario = RepositorioUsuario()
@@ -60,7 +59,7 @@ class ServicioAutenticacion:
         full_name: str,
         email: str,
         password: str,
-        programa_academico: str | None = None,
+        programa_academico_id: int,
         device_id: str | None = None,
     ):
         """Registra un estudiante y migra citas activas de invitado cuando corresponda."""
@@ -73,13 +72,16 @@ class ServicioAutenticacion:
         if not rol_por_defecto:
             raise HTTPException(status_code=500, detail="Rol por defecto no configurado")
 
-        if rol_por_defecto.name == "estudiante":
-            if programa_academico is None:
-                raise HTTPException(status_code=400, detail="programa_academico es obligatorio para estudiantes")
-            if programa_academico not in self.PROGRAMAS_PERMITIDOS:
-                raise HTTPException(status_code=400, detail="programa_academico inválido")
-        else:
-            programa_academico = None
+        programa_obj = (
+            db.query(ProgramaAcademico)
+            .filter(
+                ProgramaAcademico.id == programa_academico_id,
+                ProgramaAcademico.activo == True,
+            )
+            .first()
+        )
+        if not programa_obj:
+            raise HTTPException(status_code=400, detail="programa_academico_id inválido")
 
         usuario = self.repositorio_usuario.crear(
             db=db,
@@ -87,7 +89,7 @@ class ServicioAutenticacion:
             full_name=full_name,
             hashed_password=contrasena_hasheada,
             role_id=rol_por_defecto.id,
-            programa_academico=programa_academico,
+            programa_academico_id=programa_obj.id if programa_obj else None,
         )
 
         if device_id:
@@ -108,7 +110,7 @@ class ServicioAutenticacion:
                 "id": usuario.id,
                 "email": usuario.email,
                 "full_name": usuario.full_name,
-                "programa_academico": usuario.programa_academico,
+                "programa_academico_id": usuario.programa.id,
                 "is_active": usuario.is_active,
                 "created_at": usuario.created_at,
             },
@@ -119,7 +121,10 @@ class ServicioAutenticacion:
         """Autentica usuario por email/password y retorna tokens activos."""
         usuario = self.repositorio_usuario.obtener_por_email(db, email)
 
-        if not usuario or not verificar_contrasena(password, usuario.hashed_password):
+        if not usuario:
+            raise HTTPException(status_code=401, detail="Email no registrado")
+
+        if not verificar_contrasena(password, usuario.hashed_password):
             raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
         if not usuario.is_active:
@@ -132,7 +137,7 @@ class ServicioAutenticacion:
                 "id": usuario.id,
                 "email": usuario.email,
                 "full_name": usuario.full_name,
-                "programa_academico": usuario.programa_academico,
+                "programa_academico_id": usuario.programa.id,
                 "is_active": usuario.is_active,
                 "created_at": usuario.created_at,
             },

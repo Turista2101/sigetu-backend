@@ -17,6 +17,11 @@ load_dotenv(dotenv_path)
 
 from app.db.base import Base
 from app.models.modelo_usuario import User
+from app.models.modelo_programa_academico import ProgramaAcademico
+from app.models.modelo_contexto import Contexto
+from app.models.modelo_categoria import Categoria
+from app.models.modelo_sede import Sede
+from app.models.modelo_horario_sede import HorarioSede
 from app.models.modelo_rol import Role
 from app.models.modelo_cita import Appointment
 from app.models.modelo_historial_cita import AppointmentHistory

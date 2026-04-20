@@ -86,11 +86,11 @@ Toda la documentación está en la carpeta **`docs/`**:
 
 Al iniciar el servidor por primera vez, se crean automáticamente:
 
-| Email | Password | Rol | Sede |
-|-------|----------|-----|------|
-| `estudiante@example.com` | `12345678` | estudiante | - |
-| `secretaria@example.com` | `12345678` | secretaria | Asistencia Estudiantil |
-| `admin@example.com` | `12345678` | administrativo | Administrativa |
+| Email | Password | Rol |
+|-------|----------|-----|
+| `estudiante@example.com` | `12345678` | estudiante |
+| `secretaria@example.com` | `12345678` | secretaria |
+| `admin@example.com` | `12345678` | administrativo |
 
 ---
 
@@ -114,11 +114,11 @@ Ver detalles en [docs/STRUCTURE.md](docs/STRUCTURE.md)
 
 ## 🔐 Roles y permisos
 
-| Rol | Permisos | Sede |
-|-----|----------|------|
-| **Estudiante** | Crear, ver y editar sus propias citas | Cualquiera |
-| **Secretaría** | Ver cola, cambiar estados, ver historial | Asistencia Estudiantil |
-| **Administrativo** | Ver cola, cambiar estados, ver historial | Administrativa (Financiera) |
+| Rol | Permisos |
+|-----|----------|
+| **Estudiante** | Crear, ver y editar sus propias citas |
+| **Secretaría** | Ver cola, cambiar estados, ver historial |
+| **Administrativo** | Ver cola, cambiar estados, ver historial |
 
 **Autenticación:** JWT con access y refresh tokens. Ver [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md)
 
