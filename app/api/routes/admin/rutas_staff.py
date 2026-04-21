@@ -3,8 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencias_autenticacion import requerir_rol_admin
 from app.db.sesion import obtener_db
-from app.schemas.esquema_staff import ActualizarStaff, CrearStaff, RespuestaStaff
-from app.schemas.esquema_usuarios import RespuestaUsuario
+from app.schemas.esquema_staff import ActualizarStaff, CrearStaff, RespuestaStaff, RespuestaStaffUsuario
 from app.services.servicio_staff import ServicioStaff
 
 router = APIRouter(prefix="/staff", tags=["Staff"])
@@ -42,11 +41,13 @@ def eliminar_staff(
     servicio.eliminar_staff(db=db, user_id=user_id)
     return None
 
-@router.get("", response_model=list[RespuestaUsuario])
+@router.get("", response_model=list[RespuestaStaffUsuario])
 def listar_staff(
     sin_sede: bool = Query(False, description="Si es true, retorna solo staff sin sede asignada"),
+    sede_id: int | None = Query(None, description="Filtra staff por sede asignada"),
+    activo: bool | None = Query(None, description="Filtra por estado activo de la asignación staff"),
     db: Session = Depends(obtener_db),
     _: dict = Depends(requerir_rol_admin),
 ):
-    """Lista usuarios staff, opcionalmente filtrando los que no tienen sede asignada."""
-    return servicio.listar_staff(db=db, sin_sede=sin_sede)
+    """Lista staff con filtros opcionales por sede y estado de asignación."""
+    return servicio.listar_staff(db=db, sin_sede=sin_sede, sede_id=sede_id, activo=activo)

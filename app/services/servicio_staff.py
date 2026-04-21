@@ -15,8 +15,31 @@ class ServicioStaff:
     def __init__(self) -> None:
         self.repositorio = RepositorioStaff()
 
-    def listar_staff(self, db: Session, sin_sede: bool = False):
-        return self.repositorio.listar_usuarios_staff(db=db, sin_sede=sin_sede)
+    def listar_staff(
+        self,
+        db: Session,
+        sin_sede: bool = False,
+        sede_id: int | None = None,
+        activo: bool | None = None,
+    ):
+        filas = self.repositorio.listar_usuarios_staff(
+            db=db,
+            sin_sede=sin_sede,
+            sede_id=sede_id,
+            activo=activo,
+        )
+        return [
+            {
+                "user_id": usuario.id,
+                "email": usuario.email,
+                "full_name": usuario.full_name,
+                "programa_academico_id": usuario.programa_academico_id,
+                "is_active": usuario.is_active,
+                "sede_id": asignacion.sede_id if asignacion else None,
+                "staff_activo": asignacion.activo if asignacion else None,
+            }
+            for usuario, asignacion in filas
+        ]
 
     def crear_staff(self, db: Session, payload: CrearStaff):
         usuario = db.query(User).filter(User.id == payload.user_id).first()

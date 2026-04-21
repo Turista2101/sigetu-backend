@@ -13,6 +13,7 @@ from app.schemas.esquema_sedes import (
     CrearCategoria,
     CrearContexto,
     CrearHorarioSede,
+    CrearHorarioSedeLote,
     CrearSede,
     RespuestaCategoria,
     RespuestaContexto,
@@ -207,6 +208,17 @@ def crear_horario_sede(
 ):
     """Crea un bloque horario para una sede."""
     return servicio_horarios.crear(db=db, sede_id=sede_id, payload=payload)
+
+
+@router.post("/sedes/{sede_id}/horarios/lote", response_model=list[RespuestaHorarioSede], status_code=201)
+def crear_horarios_sede_lote(
+    sede_id: int,
+    payload: CrearHorarioSedeLote,
+    db: Session = Depends(obtener_db),
+    _: dict = Depends(requerir_rol_admin),
+):
+    """Crea varios bloques horarios para una sede en una sola operación."""
+    return servicio_horarios.crear_lote(db=db, sede_id=sede_id, payload=payload)
 
 
 @router.patch("/sedes/{sede_id}/horarios/{horario_id}", response_model=RespuestaHorarioSede)

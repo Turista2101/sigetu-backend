@@ -165,18 +165,21 @@ def seed_sedes(db: Session):
             "nombre": "Asistencia Estudiantil",
             "ubicacion": "Bloque principal",
             "descripcion": "Sede de asistencia estudiantil",
+            "filtrar_citas_por_programa": True,
         },
         {
             "codigo": "sede_administrativa",
             "nombre": "Sede Administrativa",
             "ubicacion": "Bloque administrativo",
             "descripcion": "Sede administrativa para tramites financieros",
+            "filtrar_citas_por_programa": False,
         },
         {
             "codigo": "sede_admisiones_mercadeo",
             "nombre": "Sede Admisiones y Mercadeo",
             "ubicacion": "Bloque de admisiones",
             "descripcion": "Sede para admisiones y mercadeo",
+            "filtrar_citas_por_programa": False,
         },
     ]
 
@@ -186,6 +189,7 @@ def seed_sedes(db: Session):
             existente.nombre = item["nombre"]
             existente.ubicacion = item["ubicacion"]
             existente.descripcion = item["descripcion"]
+            existente.filtrar_citas_por_programa = item["filtrar_citas_por_programa"]
             existente.activo = True
             continue
 
@@ -195,6 +199,7 @@ def seed_sedes(db: Session):
                 nombre=item["nombre"],
                 ubicacion=item["ubicacion"],
                 descripcion=item["descripcion"],
+                filtrar_citas_por_programa=item["filtrar_citas_por_programa"],
                 activo=True,
             )
         )

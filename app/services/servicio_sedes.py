@@ -20,6 +20,7 @@ from app.schemas.esquema_sedes import (
     CrearCategoria,
     CrearContexto,
     CrearHorarioSede,
+    CrearHorarioSedeLote,
     CrearSede,
 )
 
@@ -399,6 +400,42 @@ class ServicioHorariosSede:
             hora_fin=payload.hora_fin,
             activo=payload.activo,
         )
+
+    def crear_lote(self, db: Session, sede_id: int, payload: CrearHorarioSedeLote):
+        sede = self.repo_sedes.obtener_por_id(db=db, sede_id=sede_id)
+        if not sede:
+            raise HTTPException(status_code=404, detail="Sede no encontrada")
+
+        horarios_existentes = self.repositorio.listar_por_sede(db=db, sede_id=sede_id, solo_activos=None)
+        rangos_por_dia: dict[int, list[tuple[time, time]]] = {}
+
+        for horario in horarios_existentes:
+            rangos_por_dia.setdefault(horario.dia_semana, []).append((horario.hora_inicio, horario.hora_fin))
+
+        bloques_a_crear: list[dict] = []
+        for bloque in payload.bloques:
+            self._validar_rango_horas(bloque.hora_inicio, bloque.hora_fin)
+
+            rangos_dia = rangos_por_dia.setdefault(bloque.dia_semana, [])
+            for inicio_existente, fin_existente in rangos_dia:
+                if self._se_solapan(bloque.hora_inicio, bloque.hora_fin, inicio_existente, fin_existente):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="El lote contiene bloques solapados con horarios existentes o entre sí",
+                    )
+
+            rangos_dia.append((bloque.hora_inicio, bloque.hora_fin))
+            bloques_a_crear.append(
+                {
+                    "sede_id": sede_id,
+                    "dia_semana": bloque.dia_semana,
+                    "hora_inicio": bloque.hora_inicio,
+                    "hora_fin": bloque.hora_fin,
+                    "activo": bloque.activo,
+                }
+            )
+
+        return self.repositorio.crear_lote(db=db, bloques=bloques_a_crear)
 
     def actualizar(self, db: Session, sede_id: int, horario_id: int, payload: ActualizarHorarioSede):
         sede = self.repo_sedes.obtener_por_id(db=db, sede_id=sede_id)

@@ -9,11 +9,21 @@ from app.models.modelo_usuario import User
 class RepositorioStaff:
     """Abstrae consultas de usuarios staff y su asignacion de sede."""
 
-    def listar_usuarios_staff(self, db: Session, sin_sede: bool = False) -> list[User]:
-        consulta = db.query(User).join(User.role).filter(User.role.has(name="staff"))
+    def listar_usuarios_staff(
+        self,
+        db: Session,
+        sin_sede: bool = False,
+        sede_id: int | None = None,
+        activo: bool | None = None,
+    ) -> list[tuple[User, Staff | None]]:
+        consulta = db.query(User, Staff).join(User.role).outerjoin(Staff, Staff.user_id == User.id).filter(User.role.has(name="staff"))
 
         if sin_sede:
-            consulta = consulta.outerjoin(Staff, Staff.user_id == User.id).filter(Staff.id.is_(None))
+            consulta = consulta.filter(Staff.id.is_(None))
+        if sede_id is not None:
+            consulta = consulta.filter(Staff.sede_id == sede_id)
+        if activo is not None:
+            consulta = consulta.filter(Staff.activo == activo)
 
         return consulta.all()
 

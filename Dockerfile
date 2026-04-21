@@ -29,4 +29,4 @@ EXPOSE 8000
 # Comando de inicio
 COPY start.sh .
 RUN chmod +x start.sh
-CMD ["./start.sh"]
+CMD ["sh", "start.sh"]

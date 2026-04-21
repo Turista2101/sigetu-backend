@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.seguridad import hashear_contrasena
 from app.models.modelo_programa_academico import ProgramaAcademico
+from app.models.modelo_rol import Role
 from app.repositories.repositorio_usuarios import RepositorioUsuario
 from app.schemas.esquema_usuarios import ActualizarUsuarioAdmin, CrearUsuarioAdmin
 

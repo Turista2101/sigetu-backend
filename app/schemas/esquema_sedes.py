@@ -129,6 +129,12 @@ class CrearHorarioSede(BaseModel):
     activo: bool = True
 
 
+class CrearHorarioSedeLote(BaseModel):
+    """Payload para crear varios bloques de horario en una sola operación."""
+
+    bloques: list[CrearHorarioSede] = Field(min_length=1)
+
+
 class ActualizarHorarioSede(BaseModel):
     """Payload parcial para actualizar un bloque de horario en sede."""
 

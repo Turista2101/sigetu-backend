@@ -180,6 +180,14 @@ class RepositorioHorariosSede:
         db.refresh(horario)
         return horario
 
+    def crear_lote(self, db: Session, bloques: list[dict]) -> list[HorarioSede]:
+        horarios = [HorarioSede(**bloque) for bloque in bloques]
+        db.add_all(horarios)
+        db.commit()
+        for horario in horarios:
+            db.refresh(horario)
+        return horarios
+
     def actualizar(self, db: Session, horario: HorarioSede, **campos) -> HorarioSede:
         for campo, valor in campos.items():
             if valor is not None:

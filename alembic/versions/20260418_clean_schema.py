@@ -1,4 +1,4 @@
-"""clean consolidated schema
+"""Migracion unica consolidada del esquema SIGETU.
 
 Revision ID: 20260418_clean_schema
 Revises: None
@@ -24,6 +24,7 @@ HISTORY_STATUS_VALID = "status IN ('atendido','no_asistio','cancelada')"
 
 
 def upgrade() -> None:
+    # 1) Catalogos base
     op.create_table(
         "roles",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
@@ -31,6 +32,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("name", name="uq_roles_name"),
     )
 
+    # 2) Estructura academica y sedes
     op.create_table(
         "programas_academicos",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
@@ -99,6 +101,7 @@ def upgrade() -> None:
     op.create_index("ix_contextos_categoria_id", "contextos", ["categoria_id"], unique=False)
     op.create_index("ix_contextos_activo", "contextos", ["activo"], unique=False)
 
+    # 3) Usuarios y staff
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
@@ -106,13 +109,16 @@ def upgrade() -> None:
         sa.Column("hashed_password", sa.String(), nullable=False),
         sa.Column("full_name", sa.String(length=150), nullable=False),
         sa.Column("programa_academico_id", sa.Integer(), nullable=False),
+        sa.Column("role_id", sa.Integer(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=True, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(), nullable=True, server_default=sa.text("NOW()")),
         sa.ForeignKeyConstraint(["programa_academico_id"], ["programas_academicos.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["role_id"], ["roles.id"], ondelete="RESTRICT"),
         sa.UniqueConstraint("email", name="uq_users_email"),
     )
     op.create_index("ix_users_email", "users", ["email"], unique=True)
     op.create_index("ix_users_programa_academico_id", "users", ["programa_academico_id"], unique=False)
+    op.create_index("ix_users_role_id", "users", ["role_id"], unique=False)
 
     op.create_table(
         "staff",
@@ -130,6 +136,7 @@ def upgrade() -> None:
     op.create_index("ix_staff_sede_id", "staff", ["sede_id"], unique=False)
     op.create_index("ix_staff_activo", "staff", ["activo"], unique=False)
 
+    # 4) Seguridad de autenticacion
     op.create_table(
         "revoked_tokens",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
@@ -141,6 +148,7 @@ def upgrade() -> None:
     op.create_index("ix_revoked_tokens_jti", "revoked_tokens", ["jti"], unique=True)
     op.create_index("ix_revoked_tokens_expires_at", "revoked_tokens", ["expires_at"], unique=False)
 
+    # 5) Flujo de citas e historial
     op.create_table(
         "appointments",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
@@ -198,6 +206,7 @@ def upgrade() -> None:
     op.create_index("ix_appointment_history_appointment_id", "appointment_history", ["appointment_id"], unique=True)
     op.create_index("ix_appointment_history_archived_at", "appointment_history", ["archived_at"], unique=False)
 
+    # 6) Tokens de notificaciones
     op.create_table(
         "fcm_device_tokens",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
@@ -215,13 +224,45 @@ def upgrade() -> None:
     op.create_index("ix_fcm_device_tokens_device_id", "fcm_device_tokens", ["device_id"], unique=False)
     op.create_index("ix_fcm_device_tokens_token", "fcm_device_tokens", ["token"], unique=True)
 
+    # 7) Horarios por sede
+    op.create_table(
+        "horarios_sede",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("sede_id", sa.Integer(), nullable=False),
+        sa.Column("dia_semana", sa.Integer(), nullable=False),
+        sa.Column("hora_inicio", sa.Time(), nullable=False),
+        sa.Column("hora_fin", sa.Time(), nullable=False),
+        sa.Column("activo", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("NOW()")),
+        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("NOW()")),
+        sa.CheckConstraint("dia_semana BETWEEN 0 AND 6", name="ck_horarios_sede_dia_semana"),
+        sa.CheckConstraint("hora_inicio < hora_fin", name="ck_horarios_sede_rango_horas"),
+        sa.ForeignKeyConstraint(["sede_id"], ["sedes.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(op.f("ix_horarios_sede_id"), "horarios_sede", ["id"], unique=False)
+    op.create_index(op.f("ix_horarios_sede_sede_id"), "horarios_sede", ["sede_id"], unique=False)
+    op.create_index(op.f("ix_horarios_sede_dia_semana"), "horarios_sede", ["dia_semana"], unique=False)
+    op.create_index(op.f("ix_horarios_sede_activo"), "horarios_sede", ["activo"], unique=False)
+    op.create_index("ix_horarios_sede_sede_dia", "horarios_sede", ["sede_id", "dia_semana"], unique=False)
+
 
 def downgrade() -> None:
+    # 1) Horarios por sede
+    op.drop_index("ix_horarios_sede_sede_dia", table_name="horarios_sede")
+    op.drop_index(op.f("ix_horarios_sede_activo"), table_name="horarios_sede")
+    op.drop_index(op.f("ix_horarios_sede_dia_semana"), table_name="horarios_sede")
+    op.drop_index(op.f("ix_horarios_sede_sede_id"), table_name="horarios_sede")
+    op.drop_index(op.f("ix_horarios_sede_id"), table_name="horarios_sede")
+    op.drop_table("horarios_sede")
+
+    # 2) Tokens de notificaciones
     op.drop_index("ix_fcm_device_tokens_token", table_name="fcm_device_tokens")
     op.drop_index("ix_fcm_device_tokens_device_id", table_name="fcm_device_tokens")
     op.drop_index("ix_fcm_device_tokens_user_id", table_name="fcm_device_tokens")
     op.drop_table("fcm_device_tokens")
 
+    # 3) Historial y citas
     op.drop_index("ix_appointment_history_archived_at", table_name="appointment_history")
     op.drop_index("ix_appointment_history_appointment_id", table_name="appointment_history")
     op.drop_index("ix_appointment_history_contexto_id", table_name="appointment_history")
@@ -239,19 +280,23 @@ def downgrade() -> None:
     op.drop_index("ix_appointments_student_id", table_name="appointments")
     op.drop_table("appointments")
 
+    # 4) Seguridad de autenticacion
     op.drop_index("ix_revoked_tokens_expires_at", table_name="revoked_tokens")
     op.drop_index("ix_revoked_tokens_jti", table_name="revoked_tokens")
     op.drop_table("revoked_tokens")
 
+    # 5) Staff y usuarios
     op.drop_index("ix_staff_activo", table_name="staff")
     op.drop_index("ix_staff_sede_id", table_name="staff")
     op.drop_index("ix_staff_user_id", table_name="staff")
     op.drop_table("staff")
 
+    op.drop_index("ix_users_role_id", table_name="users")
     op.drop_index("ix_users_programa_academico_id", table_name="users")
     op.drop_index("ix_users_email", table_name="users")
     op.drop_table("users")
 
+    # 6) Estructura academica
     op.drop_index("ix_contextos_activo", table_name="contextos")
     op.drop_index("ix_contextos_categoria_id", table_name="contextos")
     op.drop_table("contextos")
@@ -269,5 +314,5 @@ def downgrade() -> None:
     op.drop_index("ix_programas_academicos_activo", table_name="programas_academicos")
     op.drop_table("programas_academicos")
 
-    op.drop_index("ix_roles_is_staff", table_name="roles")
+    # 7) Catalogos base
     op.drop_table("roles")

@@ -24,3 +24,15 @@ class RespuestaStaff(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RespuestaStaffUsuario(BaseModel):
+    """Respuesta de listado de staff con datos de usuario y asignación."""
+
+    user_id: int
+    email: str
+    full_name: str
+    programa_academico_id: int
+    is_active: bool
+    sede_id: int | None
+    staff_activo: bool | None
