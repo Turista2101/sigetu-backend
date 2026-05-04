@@ -37,8 +37,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:8080",        # Flutter Web desarrollo
-        "https://tudominio.com",        # Producción web (cambiar por tu dominio)
-        "https://www.tudominio.com",    # Producción web con www
+        "https://sigetu-ft.vercel.app",        # Producción web (cambiar por tu dominio)   
     ],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
