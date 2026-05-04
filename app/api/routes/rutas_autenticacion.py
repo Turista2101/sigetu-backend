@@ -1,7 +1,7 @@
 """Endpoints HTTP para registro, login y manejo de tokens de autenticación."""
 
 import os
-from fastapi import APIRouter, Depends, Response, Cookie
+from fastapi import APIRouter, Depends, Response, Cookie, Request
 from typing import Optional
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,9 @@ from app.schemas.esquema_usuarios import (
     SolicitudInvitado,
     RespuestaInvitado,
     SolicitudRefreshBody,
+    SolicitudResetPassword,
+    SolicitudConfirmarResetPassword,
+    RespuestaResetPassword,
 )
 from app.core.dependencias_autenticacion import obtener_payload_token_actual
 from app.models.modelo_usuario import User
@@ -135,3 +138,27 @@ def obtener_mi_perfil(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario
+
+
+@router.post("/password-reset/request", response_model=RespuestaResetPassword)
+def solicitar_reset_password(
+    payload: SolicitudResetPassword,
+    request: Request,
+    db: Session = Depends(obtener_db),
+):
+    """Inicia flujo de restablecimiento de contrasena por correo."""
+    ip_cliente = request.client.host if request.client else "unknown"
+    return servicio_auth.solicitar_reset_password(db=db, email=payload.email, requested_ip=ip_cliente)
+
+
+@router.post("/password-reset/confirm", response_model=RespuestaResetPassword)
+def confirmar_reset_password(
+    payload: SolicitudConfirmarResetPassword,
+    db: Session = Depends(obtener_db),
+):
+    """Confirma el restablecimiento con token y nueva contrasena."""
+    return servicio_auth.confirmar_reset_password(
+        db=db,
+        token=payload.token,
+        new_password=payload.new_password,
+    )

@@ -22,6 +22,7 @@ from app.models.modelo_cita import Appointment
 from app.models.modelo_historial_cita import AppointmentHistory
 from app.models.modelo_token_revocado import RevokedToken
 from app.models.modelo_token_dispositivo_fcm import FCMDeviceToken
+from app.models.modelo_token_restablecer_contrasena import PasswordResetToken
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

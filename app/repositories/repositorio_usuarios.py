@@ -10,6 +10,10 @@ class RepositorioUsuario:
         """Busca un usuario por correo electrónico."""
         return db.query(User).filter(User.email == email).first()
 
+    def obtener_por_id(self, db: Session, user_id: int):
+        """Busca un usuario por id."""
+        return db.query(User).filter(User.id == user_id).first()
+
     def crear(
         self,
         db: Session,
@@ -30,6 +34,13 @@ class RepositorioUsuario:
             is_active=is_active,
         )
         db.add(usuario)
+        db.commit()
+        db.refresh(usuario)
+        return usuario
+
+    def actualizar_contrasena(self, db: Session, usuario: User, hashed_password: str) -> User:
+        """Actualiza la contrasena hasheada de un usuario."""
+        usuario.hashed_password = hashed_password
         db.commit()
         db.refresh(usuario)
         return usuario

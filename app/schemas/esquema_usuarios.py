@@ -72,3 +72,19 @@ class RespuestaInvitado(BaseModel):
     """Respuesta de acceso temporal para invitados."""
     access_token: str
     token_type: str = "bearer"
+
+
+class SolicitudResetPassword(BaseModel):
+    """Solicitud para iniciar restablecimiento de contrasena."""
+    email: EmailStr
+
+
+class SolicitudConfirmarResetPassword(BaseModel):
+    """Solicitud para confirmar restablecimiento con token y nueva contrasena."""
+    token: Annotated[str, StringConstraints(min_length=10, max_length=512)]
+    new_password: Annotated[str, StringConstraints(min_length=8, max_length=128)]
+
+
+class RespuestaResetPassword(BaseModel):
+    """Mensaje generico de restablecimiento de contrasena."""
+    detail: str
