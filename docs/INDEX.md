@@ -234,6 +234,7 @@ sigetu-backend/
 ### Autenticación
 - [PROJECT_SUMMARY.md#-sistema-de-autenticación-y-autorización](PROJECT_SUMMARY.md#-sistema-de-autenticación-y-autorización)
 - [STRUCTURE.md#-corauth_dependenciespy](STRUCTURE.md#-corauth_dependenciespy)
+- Restablecimiento de contraseña: `POST /auth/password-reset/request` y `POST /auth/password-reset/confirm`
 
 ### Base de datos
 - [PROJECT_SUMMARY.md#--modelo-de-datos](PROJECT_SUMMARY.md#--modelo-de-datos)

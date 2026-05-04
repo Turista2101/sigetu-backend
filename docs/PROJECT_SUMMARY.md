@@ -231,6 +231,21 @@ En cualquier estado previo a "atendido":
    {refresh_token}
    ├→ Agregar refresh_token a lista negra
    └→ Retornar {message}
+
+6. Restablecimiento de contraseña
+   POST /auth/password-reset/request
+   {email}
+   ├→ Generar token de restablecimiento
+   ├→ Guardar hash en BD (password_reset_tokens)
+   ├→ Enviar correo con enlace
+   └→ Retornar mensaje genérico
+
+7. Confirmar restablecimiento
+   POST /auth/password-reset/confirm
+   {token, new_password}
+   ├→ Validar token (hash, expiración, usado)
+   ├→ Actualizar contraseña
+   └→ Retornar {message}
 ```
 
 ### Tokens JWT
@@ -275,6 +290,8 @@ POST   /auth/register          Registrar nuevo usuario
 POST   /auth/login            Login (email/password)
 POST   /auth/refresh          Renovar access_token
 POST   /auth/logout           Invalidar refresh_token
+POST   /auth/password-reset/request   Solicitar restablecimiento
+POST   /auth/password-reset/confirm   Confirmar restablecimiento
 ```
 
 ### Endpoints de estudiante

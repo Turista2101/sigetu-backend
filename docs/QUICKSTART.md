@@ -46,11 +46,25 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 
 # Firebase (opcional - para notificaciones push)
 FIREBASE_CREDENTIALS_PATH=./sigetu-b10c0-firebase-adminsdk-fbsvc-d3c8e11eaf.json
+
+# SMTP (restablecimiento de contraseña)
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=usuario@example.com
+SMTP_PASSWORD=tu_password_smtp
+SMTP_USE_TLS=true
+SMTP_FROM_EMAIL=usuario@example.com
+SMTP_FROM_NAME=SIGETU
+RESET_PASSWORD_BASE_URL=http://localhost:5173/reset-password
+RESET_TOKEN_EXPIRE_MINUTES=15
+RESET_REQUEST_LIMIT_WINDOW_MINUTES=15
+RESET_REQUEST_LIMIT_MAX=3
 ```
 
 **⚠️ Importante:**
 - Genera SECRET_KEY segura: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 - El archivo Firebase es opcional (solo si usas notificaciones)
+- Para restablecimiento de contraseña debes configurar SMTP y RESET_PASSWORD_BASE_URL
 - No commitees el `.env` a Git (ya está en `.gitignore`)
 
 ### Paso 3: Ejecutar con Docker Compose
@@ -197,11 +211,25 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 
 # Firebase (opcional - para notificaciones push)
 FIREBASE_CREDENTIALS_PATH=./sigetu-b10c0-firebase-adminsdk-fbsvc-d3c8e11eaf.json
+
+# SMTP (restablecimiento de contraseña)
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=usuario@example.com
+SMTP_PASSWORD=tu_password_smtp
+SMTP_USE_TLS=true
+SMTP_FROM_EMAIL=usuario@example.com
+SMTP_FROM_NAME=SIGETU
+RESET_PASSWORD_BASE_URL=http://localhost:5173/reset-password
+RESET_TOKEN_EXPIRE_MINUTES=15
+RESET_REQUEST_LIMIT_WINDOW_MINUTES=15
+RESET_REQUEST_LIMIT_MAX=3
 ```
 
 **⚠️ Importante:**
 - Reemplaza `tu_password` con tu contraseña de PostgreSQL
 - Genera una SECRET_KEY segura: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+- Para restablecimiento de contraseña debes configurar SMTP y RESET_PASSWORD_BASE_URL
 - No commitees el `.env` a Git (está en `.gitignore`)
 
 ### Paso 6: Aplicar migraciones

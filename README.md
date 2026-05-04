@@ -129,6 +129,8 @@ Ver detalles en [docs/STRUCTURE.md](docs/STRUCTURE.md)
 - `POST /auth/login` - Login con email/password
 - `POST /auth/refresh` - Renovar access token
 - `POST /auth/logout` - Cerrar sesión
+- `POST /auth/password-reset/request` - Solicitar restablecimiento de contraseña
+- `POST /auth/password-reset/confirm` - Confirmar restablecimiento con token
 
 ### Citas - Estudiante (`/appointments`)
 - `POST /appointments` - Crear cita
@@ -215,6 +217,19 @@ SECRET_KEY=mi-clave-secreta-super-larga
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=10080
 REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# SMTP (restablecimiento de contraseña)
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=usuario@example.com
+SMTP_PASSWORD=tu_password_smtp
+SMTP_USE_TLS=true
+SMTP_FROM_EMAIL=usuario@example.com
+SMTP_FROM_NAME=SIGETU
+RESET_PASSWORD_BASE_URL=http://localhost:5173/reset-password
+RESET_TOKEN_EXPIRE_MINUTES=15
+RESET_REQUEST_LIMIT_WINDOW_MINUTES=15
+RESET_REQUEST_LIMIT_MAX=3
 ```
 
 Ver [env.example](env.example)
