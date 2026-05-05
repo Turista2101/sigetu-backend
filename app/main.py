@@ -38,7 +38,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:8080",         # Flutter Web desarrollo
         "https://sigetu-ft.vercel.app",  # Producción web (cambiar por tu dominio)   
-        "https://sigetu-54f11.web.app",      
+        "https://sigetu-54f11.web.app",   
+  
     ],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
